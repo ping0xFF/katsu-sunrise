@@ -1,0 +1,77 @@
+{
+  gnzFocusTrades: solana {
+    dexTrades(
+      options: {limit: 100, asc: "block.timestamp.time"}
+      txSender: {is: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
+      baseCurrency: {is: "FFgfStKwuF3DSxEeogA69FNkPrkb7XDA5Tw29TBEpump"}
+    ) {
+      transaction {
+        signature
+      }
+      block {
+        timestamp {
+          time
+        }
+      }
+    }
+  }
+  
+  buzzFocusTrades: solana {
+    dexTrades(
+      options: {limit: 100, asc: "block.timestamp.time"}
+      txSender: {is: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
+      baseCurrency: {is: "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"}
+    ) {
+      transaction {
+        signature
+      }
+      block {
+        timestamp {
+          time
+        }
+      }
+    }
+  }
+  
+  gnzSurroundingTrades: solana {
+    dexTrades(
+      options: {limit: 1000, asc: "block.timestamp.time"}
+      txSender: {not: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
+      baseCurrency: {is: "FFgfStKwuF3DSxEeogA69FNkPrkb7XDA5Tw29TBEpump"}
+      time: {between: "2025-01-05T12:00:00Z", "2025-01-05T12:02:00Z"}
+    ) {
+      txSender {
+        address
+      }
+      transaction {
+        signature
+      }
+      block {
+        timestamp {
+          time
+        }
+      }
+    }
+  }
+  
+  buzzSurroundingTrades: solana {
+    dexTrades(
+      options: {limit: 1000, asc: "block.timestamp.time"}
+      txSender: {not: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
+      baseCurrency: {is: "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"}
+      time: {between: "2025-01-05T12:00:00Z", "2025-01-05T12:02:00Z"}
+    ) {
+      txSender {
+        address
+      }
+      transaction {
+        signature
+      }
+      block {
+        timestamp {
+          time
+        }
+      }
+    }
+  }
+}

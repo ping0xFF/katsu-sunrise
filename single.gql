@@ -1,0 +1,38 @@
+{
+  solana {
+    dexTrades(
+      options: {limit: 1000, asc: "block.timestamp.time"}
+      txSender: {is: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
+      any: [
+        {baseCurrency: {is: "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"}}
+        {quoteCurrency: {is: "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"}}
+      ]
+    ) {
+      transaction {
+        signature
+      }
+      txSender {
+        address
+      }
+      tokenPair {
+        base {
+          symbol
+        }
+        quote {
+          symbol
+        }
+      }
+      block {
+        timestamp {
+          time
+        }
+        height
+      }
+      trade {
+        amount
+        amountInUSD
+        side
+      }
+    }
+  }
+}
