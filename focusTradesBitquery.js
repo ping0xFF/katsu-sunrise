@@ -10,7 +10,7 @@ const buzzFocusTradesQuery = `
 {
   solana {
     dexTrades(
-      options: {limit: 1000, asc: "block.timestamp.time"}
+      options: {limit: 10, asc: "block.timestamp.time"}
       txSender: {is: "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"}
       any: [
         {baseCurrency: {is: "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"}}
