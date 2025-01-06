@@ -4,8 +4,8 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const SURROUNDING_WINDOW = 10 * 60; // 10 minutes in seconds
-const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5';
+const TIME_WINDOW = 5 * 60; // 5 minutes in seconds (adjust to 1 * 60 if needed)
+const FOCUS_TOKEN_PAIR = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Hardcoded for now
 
 // Initialize Solana Connection
 const connection = new Connection(ALCHEMY_API_URL, 'finalized');
@@ -23,26 +23,28 @@ function loadFocusTrades() {
   }
 }
 
+/**
+ * Fetch Transactions Within a Time Window
+ */
 async function fetchSurroundingTrades(trade) {
   try {
-    const { timestamp, tokenPair, signature } = trade;
-    console.log(`🔍 Fetching surrounding trades for timestamp: ${timestamp}, tokenPair: ${tokenPair}`);
+    const { timestamp, signature } = trade;
+    console.log(`🔍 Fetching transactions within ${TIME_WINDOW / 60} minutes before focus transaction`);
+    console.log(`🎯 Focus Transaction: ${signature}, Timestamp: ${timestamp}`);
 
-    const startTime = timestamp - SURROUNDING_WINDOW;
-    const endTime = timestamp + SURROUNDING_WINDOW;
+    const startTime = timestamp - TIME_WINDOW; // Window start (e.g., 5 minutes before focus)
+    const endTime = timestamp; // Focus transaction timestamp
 
     let lastSignature = signature;
     let surroundingTrades = [];
     let continueFetching = true;
 
-    console.log(`🕒 Time Window: Start=${startTime}, End=${endTime}`);
-
     while (continueFetching) {
-      console.log(`⏳ Fetching 50 transactions before signature: ${lastSignature || 'N/A'}`);
+      console.log(`⏳ Fetching transactions BEFORE signature: ${lastSignature || 'N/A'}`);
 
       const transactions = await connection.getSignaturesForAddress(
-        new PublicKey(FOCUS_WALLET),
-        { before: lastSignature, limit: 50 }
+        new PublicKey(FOCUS_TOKEN_PAIR),
+        { before: lastSignature, limit: 10 } // Fetch in batches of 10 for efficiency
       );
 
       console.log(`✅ Fetched ${transactions.length} signatures.`);
@@ -66,18 +68,18 @@ async function fetchSurroundingTrades(trade) {
 
       console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
 
-      // Log oldest and newest timestamps in this batch
-      const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
-      const newestTxTime = detailedTransactions[0]?.blockTime || 0;
-      console.log(`📉 Oldest Tx Time: ${oldestTxTime}, 📈 Newest Tx Time: ${newestTxTime}`);
-
       // Filter transactions within the time window
       const filteredBatch = detailedTransactions
-        .filter((tx) => tx && tx.blockTime >= startTime && tx.blockTime <= endTime)
+        .filter((tx) => {
+          if (!tx || !tx.transaction || !tx.blockTime) {
+            console.warn(`⚠️ Skipping invalid or incomplete transaction.`);
+            return false;
+          }
+          return tx.blockTime >= startTime && tx.blockTime <= endTime;
+        })
         .map((tx) => ({
           signature: tx.transaction.signatures[0],
           timestamp: tx.blockTime,
-          tokenPair,
           accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
         }));
 
@@ -85,19 +87,18 @@ async function fetchSurroundingTrades(trade) {
 
       surroundingTrades.push(...filteredBatch);
 
-      // Stop conditions:
-      if (oldestTxTime < startTime) {
-        console.log(`🛑 Oldest transaction is older than startTime. Stopping pagination.`);
-        break;
-      }
-
-      if (transactions.length < 50) {
-        console.log(`🛑 Fewer than 50 transactions returned. End of available history.`);
-        break;
-      }
-
-      // Update lastSignature for next pagination
+      // Stop if:
+      // - Oldest transaction is older than startTime
+      // - Fewer than 10 transactions were returned
+      const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
       lastSignature = transactions[transactions.length - 1]?.signature;
+
+      console.log(`📉 Oldest Tx Time: ${oldestTxTime}`);
+
+      if (oldestTxTime < startTime || transactions.length < 10) {
+        console.log(`🛑 Stopping pagination. Reached time window or end of transactions.`);
+        continueFetching = false;
+      }
     }
 
     console.log(`✅ Total surrounding trades found: ${surroundingTrades.length}`);
