@@ -55,6 +55,13 @@ function isFocusTokenBuy(tx) {
   console.log(`🔻 SOL Balance Decreased: ${isSOLDecrease}`);
 
   const isBuy = isTokenIncrease && isSOLDecrease;
+
+  if (isBuy) {
+    const solSpent = (preSOLBalance - postSOLBalance) / 1e9; // Convert lamports to SOL
+    console.log(`💸 SOL Spent: ${solSpent} SOL\n`);
+    tx.solSpent = solSpent; // Attach solSpent to the transaction object
+  }
+
   console.log(`🎯 Final Evaluation: Is Buy Transaction: ${isBuy}\n`);
 
   return isBuy;
@@ -98,6 +105,7 @@ async function fetchFocusTrades() {
         wallet: FOCUS_WALLET,
         timestamp: tx.blockTime,
         tokenPair: `${FOCUS_TOKEN}/SOL`,
+        solSpent: tx.solSpent || 0,
       }));
 
     console.log('\n🚀 Focus Trades:', focusTrades);
