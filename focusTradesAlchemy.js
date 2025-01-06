@@ -5,9 +5,9 @@ require('dotenv').config();
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 
 // Constants
-const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5'; // Wallet
-const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // BUZZ Token
-const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // SOL Token Mint Address
+const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5';
+const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump';
+const SOL_TOKEN = 'So11111111111111111111111111111111111111112';
 
 // Initialize Solana Connection
 const connection = new Connection(ALCHEMY_API_URL, 'confirmed');
@@ -20,13 +20,11 @@ async function fetchFocusTrades() {
     const walletAddress = new PublicKey(FOCUS_WALLET);
     console.log(`Fetching trades for wallet: ${FOCUS_WALLET}`);
 
-    // Step 1: Fetch recent transactions for the wallet
     const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 250 });
     console.log(`Found ${signatures.length} recent signatures.`);
 
     const focusTrades = [];
 
-    // Step 2: Fetch all transaction details in parallel
     const transactions = await Promise.all(
       signatures.map(({ signature }) =>
         connection.getTransaction(signature, {
@@ -34,12 +32,11 @@ async function fetchFocusTrades() {
           maxSupportedTransactionVersion: 0,
         }).catch((err) => {
           console.warn(`Failed to fetch transaction for signature: ${signature}`, err.message);
-          return null; // Prevent Promise.all from failing due to one error
+          return null;
         })
       )
     );
 
-    // Step 3: Filter and process transactions
     for (let i = 0; i < transactions.length; i++) {
       const tx = transactions[i];
       const signature = signatures[i]?.signature;
@@ -55,9 +52,18 @@ async function fetchFocusTrades() {
       }
 
       const accounts = tx.transaction.message.accountKeys.map((key) => key.toBase58());
+      const instructions = tx.transaction.message.instructions;
+
+      // Check in accountKeys (previous logic)
       const isBUZZTrade = accounts.includes(BUZZ_TOKEN) && accounts.includes(SOL_TOKEN);
 
-      if (isBUZZTrade) {
+      // Check in instructions
+      const isBUZZInInstructions = instructions.some((ix) => {
+        const ixAccounts = ix.accounts || [];
+        return ixAccounts.some((index) => accounts[index] === BUZZ_TOKEN);
+      });
+
+      if (isBUZZTrade || isBUZZInInstructions) {
         focusTrades.push({
           signature,
           wallet: FOCUS_WALLET,
