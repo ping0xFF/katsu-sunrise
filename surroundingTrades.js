@@ -23,12 +23,6 @@ function loadFocusTrades() {
   }
 }
 
-/**
- * Fetch Surrounding Trades for a Specific Trade
- */
-/**
- * Fetch Surrounding Trades for a Specific Trade
- */
 async function fetchSurroundingTrades(trade) {
   try {
     const { timestamp, tokenPair, signature } = trade;
@@ -41,13 +35,22 @@ async function fetchSurroundingTrades(trade) {
     let surroundingTrades = [];
     let continueFetching = true;
 
+    console.log(`🕒 Time Window: Start=${startTime}, End=${endTime}`);
+
     while (continueFetching) {
+      console.log(`⏳ Fetching 50 transactions before signature: ${lastSignature || 'N/A'}`);
+
       const transactions = await connection.getSignaturesForAddress(
         new PublicKey(FOCUS_WALLET),
         { before: lastSignature, limit: 50 }
       );
 
-      if (!transactions.length) break;
+      console.log(`✅ Fetched ${transactions.length} signatures.`);
+
+      if (!transactions.length) {
+        console.log(`⚠️ No more signatures found. Stopping pagination.`);
+        break;
+      }
 
       const detailedTransactions = await Promise.all(
         transactions.map(({ signature }) =>
@@ -55,12 +58,20 @@ async function fetchSurroundingTrades(trade) {
             commitment: 'finalized',
             maxSupportedTransactionVersion: 0,
           }).catch((err) => {
-            console.warn(`Failed to fetch transaction: ${signature}`, err.message);
+            console.warn(`❌ Failed to fetch transaction: ${signature}`, err.message);
             return null;
           })
         )
       );
 
+      console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
+
+      // Log oldest and newest timestamps in this batch
+      const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
+      const newestTxTime = detailedTransactions[0]?.blockTime || 0;
+      console.log(`📉 Oldest Tx Time: ${oldestTxTime}, 📈 Newest Tx Time: ${newestTxTime}`);
+
+      // Filter transactions within the time window
       const filteredBatch = detailedTransactions
         .filter((tx) => tx && tx.blockTime >= startTime && tx.blockTime <= endTime)
         .map((tx) => ({
@@ -70,20 +81,26 @@ async function fetchSurroundingTrades(trade) {
           accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
         }));
 
+      console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
+
       surroundingTrades.push(...filteredBatch);
 
-      // Stop if:
-      // 1. All transactions are older than `startTime`
-      // 2. Fewer than 50 transactions were returned (indicating the end of available history)
-      const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
-      lastSignature = transactions[transactions.length - 1]?.signature;
-
-      if (oldestTxTime < startTime || transactions.length < 50) {
-        continueFetching = false;
+      // Stop conditions:
+      if (oldestTxTime < startTime) {
+        console.log(`🛑 Oldest transaction is older than startTime. Stopping pagination.`);
+        break;
       }
+
+      if (transactions.length < 50) {
+        console.log(`🛑 Fewer than 50 transactions returned. End of available history.`);
+        break;
+      }
+
+      // Update lastSignature for next pagination
+      lastSignature = transactions[transactions.length - 1]?.signature;
     }
 
-    console.log(`✅ Found ${surroundingTrades.length} surrounding trades.`);
+    console.log(`✅ Total surrounding trades found: ${surroundingTrades.length}`);
     return surroundingTrades;
   } catch (error) {
     console.error('❌ Error fetching surrounding trades:', error.message);
