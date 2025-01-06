@@ -6,11 +6,13 @@ const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 
 // Constants
 const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5';
-const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump';
+const BUZZ_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // amethyst test
+// const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump';
 const SOL_TOKEN = 'So11111111111111111111111111111111111111112';
 
 // Initialize Solana Connection
-const connection = new Connection(ALCHEMY_API_URL, 'confirmed');
+// const connection = new Connection(ALCHEMY_API_URL, 'confirmed');
+const connection = new Connection(ALCHEMY_API_URL, 'finalized'); // no luck
 
 /**
  * Fetch Focus Trades for a Wallet
@@ -20,7 +22,7 @@ async function fetchFocusTrades() {
     const walletAddress = new PublicKey(FOCUS_WALLET);
     console.log(`Fetching trades for wallet: ${FOCUS_WALLET}`);
 
-    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 250 });
+    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 25 });
     console.log(`Found ${signatures.length} recent signatures.`);
 
     const focusTrades = [];
@@ -28,7 +30,7 @@ async function fetchFocusTrades() {
     const transactions = await Promise.all(
       signatures.map(({ signature }) =>
         connection.getTransaction(signature, {
-          commitment: 'confirmed',
+          commitment: 'finalized',
           maxSupportedTransactionVersion: 0,
         }).catch((err) => {
           console.warn(`Failed to fetch transaction for signature: ${signature}`, err.message);
@@ -46,7 +48,11 @@ async function fetchFocusTrades() {
         continue;
       }
 
-      if (!tx.transaction || !tx.transaction.message || !tx.transaction.message.accountKeys) {
+      if (
+        !tx.transaction || 
+        !tx.transaction.message || 
+        (!tx.transaction.message.accountKeys && !tx.transaction.message.addressTableLookups)
+      ) {
         console.warn(`Malformed transaction data for signature: ${signature}`);
         continue;
       }
@@ -54,14 +60,21 @@ async function fetchFocusTrades() {
       const accounts = tx.transaction.message.accountKeys.map((key) => key.toBase58());
       const instructions = tx.transaction.message.instructions;
 
+      // Log full accounts and instructions for inspection
+      console.log(`\n--- Transaction Details for Signature: ${signature} ---`);
+      console.log('Accounts:', accounts);
+      console.log('Instructions:', instructions);
+
       // Check in accountKeys (previous logic)
       const isBUZZTrade = accounts.includes(BUZZ_TOKEN) && accounts.includes(SOL_TOKEN);
+      console.log(`isBUZZTrade: ${isBUZZTrade}`);
 
       // Check in instructions
       const isBUZZInInstructions = instructions.some((ix) => {
         const ixAccounts = ix.accounts || [];
         return ixAccounts.some((index) => accounts[index] === BUZZ_TOKEN);
       });
+      console.log(`isBUZZInInstructions: ${isBUZZInInstructions}`);
 
       if (isBUZZTrade || isBUZZInInstructions) {
         focusTrades.push({
@@ -73,7 +86,7 @@ async function fetchFocusTrades() {
       }
     }
 
-    console.log('Focus Trades:', focusTrades);
+    console.log('\nFocus Trades:', focusTrades);
     return focusTrades;
   } catch (error) {
     console.error('Error fetching focus trades:', error.message);
