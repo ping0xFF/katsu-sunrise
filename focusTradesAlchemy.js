@@ -21,22 +21,35 @@ async function fetchFocusTrades() {
     console.log(`Fetching trades for wallet: ${FOCUS_WALLET}`);
 
     // Step 1: Fetch recent transactions for the wallet
-    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 50 });
+    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 250 });
     console.log(`Found ${signatures.length} recent signatures.`);
 
     const focusTrades = [];
 
+    // Step 2: Fetch transaction details and filter for BUZZ/SOL pair
     for (const { signature } of signatures) {
+      console.log(`Fetching transaction details for signature: ${signature}`);
+
       const tx = await connection.getTransaction(signature, {
         commitment: 'confirmed',
         maxSupportedTransactionVersion: 0,
       });
 
-      if (!tx) continue;
+      if (!tx) {
+        console.warn(`Transaction not found for signature: ${signature}`);
+        continue;
+      }
+
+      if (!tx.transaction || !tx.transaction.message || !tx.transaction.message.accountKeys) {
+        // console.warn(`Malformed transaction data for signature: ${signature}`, tx);
+        console.warn(`Malformed transaction data for signature: ${signature}`);
+        continue;
+      }
 
       const accounts = tx.transaction.message.accountKeys.map((key) => key.toBase58());
       const instructions = tx.transaction.message.instructions;
 
+      // Check if transaction involves BUZZ and SOL token mints
       const isBUZZTrade = accounts.includes(BUZZ_TOKEN) && accounts.includes(SOL_TOKEN);
 
       if (isBUZZTrade) {
