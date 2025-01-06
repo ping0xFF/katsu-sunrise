@@ -1,30 +1,48 @@
 const { Connection, PublicKey } = require('@solana/web3.js');
 require('dotenv').config();
 
-// Alchemy RPC URL from .env
-const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-
 // Constants
+const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5';
-const BUZZ_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // amethyst test
+const BUZZ_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Amethyst Token
 // const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // BUZZ
-const SOL_TOKEN = 'So11111111111111111111111111111111111111112';
+const KEYWORDS = ['ray_log', 'swap', 'trade', 'buy']; // Keywords for identifying swaps
 
 // Initialize Solana Connection
 const connection = new Connection(ALCHEMY_API_URL, 'finalized');
 
 /**
- * Fetch Focus Trades for a Wallet
+ * Check if a transaction matches BUZZ_TOKEN trade criteria
+ */
+function isBuzzTokenBuy(tx) {
+  const { meta } = tx;
+
+  if (!meta) return false;
+
+  // ✅ Check if BUZZ_TOKEN appears in preTokenBalances or postTokenBalances
+  const tokenInBalances =
+    (meta.preTokenBalances?.some(balance => balance.mint === BUZZ_TOKEN) ||
+     meta.postTokenBalances?.some(balance => balance.mint === BUZZ_TOKEN));
+
+  // ✅ Check if logs contain relevant swap keywords
+  const logsContainKeywords = meta.logMessages?.some(log =>
+    KEYWORDS.some(keyword => log.toLowerCase().includes(keyword))
+  );
+
+  return tokenInBalances && logsContainKeywords;
+}
+
+/**
+ * Fetch and filter BUZZ_TOKEN trades for a wallet
  */
 async function fetchFocusTrades() {
   try {
+    console.log(`🔍 Fetching trades for wallet: ${FOCUS_WALLET}`);
     const walletAddress = new PublicKey(FOCUS_WALLET);
-    console.log(`Fetching trades for wallet: ${FOCUS_WALLET}`);
 
+    // Fetch recent signatures
     const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 25 });
-    console.log(`Found ${signatures.length} recent signatures.`);
-
-    const focusTrades = [];
+    console.log(`✅ Found ${signatures.length} recent transactions.`);
 
     const transactions = await Promise.all(
       signatures.map(({ signature }) =>
@@ -38,67 +56,24 @@ async function fetchFocusTrades() {
       )
     );
 
-    for (let i = 0; i < transactions.length; i++) {
-      const tx = transactions[i];
-      const signature = signatures[i]?.signature;
+    // Filter transactions matching BUZZ_TOKEN buy criteria
+    const focusTrades = transactions
+      .map((tx, index) => ({
+        tx,
+        signature: signatures[index]?.signature,
+      }))
+      .filter(({ tx }) => tx && isBuzzTokenBuy(tx))
+      .map(({ tx, signature }) => ({
+        signature,
+        wallet: FOCUS_WALLET,
+        timestamp: tx.blockTime,
+        tokenPair: 'BUZZ/SOL',
+      }));
 
-      if (!tx) {
-        console.warn(`Transaction not found or failed for signature: ${signature}`);
-        continue;
-      }
-
-      const message = tx.transaction?.message;
-      if (!message) {
-        console.warn(`Malformed transaction data for signature: ${signature}`);
-        continue;
-      }
-
-      // Handle accountKeys and addressTableLookups
-      let accounts = [];
-      if (message.accountKeys) {
-        accounts = message.accountKeys.map((key) => key.toBase58());
-      } else if (message.addressTableLookups) {
-        const accountLookups = message.addressTableLookups.flatMap((lookup) =>
-          lookup.readonlyIndexes.concat(lookup.writableIndexes)
-        );
-        accounts = accountLookups.map((index) => message.staticAccountKeys[index].toBase58());
-      } else {
-        console.warn(`No accountKeys or addressTableLookups for signature: ${signature}`);
-        continue;
-      }
-
-      const instructions = message.instructions || [];
-
-      // Log full accounts and instructions for inspection
-      console.log(`\n--- Transaction Details for Signature: ${signature} ---`);
-      console.log('Accounts:', accounts);
-      console.log('Instructions:', instructions);
-
-      // Check in accountKeys (previous logic)
-      const isBUZZTrade = accounts.includes(BUZZ_TOKEN) && accounts.includes(SOL_TOKEN);
-      console.log(`isBUZZTrade: ${isBUZZTrade}`);
-
-      // Check in instructions
-      const isBUZZInInstructions = instructions.some((ix) => {
-        const ixAccounts = ix.accounts || [];
-        return ixAccounts.some((index) => accounts[index] === BUZZ_TOKEN);
-      });
-      console.log(`isBUZZInInstructions: ${isBUZZInInstructions}`);
-
-      if (isBUZZTrade || isBUZZInInstructions) {
-        focusTrades.push({
-          signature,
-          wallet: FOCUS_WALLET,
-          timestamp: tx.blockTime,
-          tokenPair: 'BUZZ/SOL',
-        });
-      }
-    }
-
-    console.log('\nFocus Trades:', focusTrades);
+    console.log('\n🚀 Focus Trades:', focusTrades);
     return focusTrades;
   } catch (error) {
-    console.error('Error fetching focus trades:', error.message);
+    console.error('❌ Error fetching focus trades:', error.message);
   }
 }
 
