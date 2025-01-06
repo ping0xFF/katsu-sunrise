@@ -5,7 +5,7 @@ require('dotenv').config();
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 
 // Constants
-const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5'; // 0xsun's Wallet
+const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5'; // Wallet
 const BUZZ_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // BUZZ Token
 const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // SOL Token Mint Address
 
@@ -26,30 +26,35 @@ async function fetchFocusTrades() {
 
     const focusTrades = [];
 
-    // Step 2: Fetch transaction details and filter for BUZZ/SOL pair
-    for (const { signature } of signatures) {
-      console.log(`Fetching transaction details for signature: ${signature}`);
+    // Step 2: Fetch all transaction details in parallel
+    const transactions = await Promise.all(
+      signatures.map(({ signature }) =>
+        connection.getTransaction(signature, {
+          commitment: 'confirmed',
+          maxSupportedTransactionVersion: 0,
+        }).catch((err) => {
+          console.warn(`Failed to fetch transaction for signature: ${signature}`, err.message);
+          return null; // Prevent Promise.all from failing due to one error
+        })
+      )
+    );
 
-      const tx = await connection.getTransaction(signature, {
-        commitment: 'confirmed',
-        maxSupportedTransactionVersion: 0,
-      });
+    // Step 3: Filter and process transactions
+    for (let i = 0; i < transactions.length; i++) {
+      const tx = transactions[i];
+      const signature = signatures[i]?.signature;
 
       if (!tx) {
-        console.warn(`Transaction not found for signature: ${signature}`);
+        console.warn(`Transaction not found or failed for signature: ${signature}`);
         continue;
       }
 
       if (!tx.transaction || !tx.transaction.message || !tx.transaction.message.accountKeys) {
-        // console.warn(`Malformed transaction data for signature: ${signature}`, tx);
         console.warn(`Malformed transaction data for signature: ${signature}`);
         continue;
       }
 
       const accounts = tx.transaction.message.accountKeys.map((key) => key.toBase58());
-      const instructions = tx.transaction.message.instructions;
-
-      // Check if transaction involves BUZZ and SOL token mints
       const isBUZZTrade = accounts.includes(BUZZ_TOKEN) && accounts.includes(SOL_TOKEN);
 
       if (isBUZZTrade) {
