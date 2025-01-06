@@ -68,15 +68,9 @@ async function fetchSurroundingTrades(trade) {
 
       console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
 
-      // Filter transactions within the time window
       const filteredBatch = detailedTransactions
-        .filter((tx) => {
-          if (!tx || !tx.transaction || !tx.blockTime) {
-            console.warn(`⚠️ Skipping invalid or incomplete transaction.`);
-            return false;
-          }
-          return tx.blockTime >= startTime && tx.blockTime <= endTime;
-        })
+        .filter((tx) => tx && tx.transaction && tx.blockTime) // Filter out invalid transactions
+        .filter((tx) => tx.blockTime >= startTime && tx.blockTime <= endTime) // Filter by time window
         .map((tx) => ({
           signature: tx.transaction.signatures[0],
           timestamp: tx.blockTime,
@@ -85,13 +79,12 @@ async function fetchSurroundingTrades(trade) {
 
       console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
 
+      // Append to surrounding trades
       surroundingTrades.push(...filteredBatch);
 
-      // Stop if:
-      // - Oldest transaction is older than startTime
-      // - Fewer than 10 transactions were returned
+      // Handle pagination safely
       const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
-      lastSignature = transactions[transactions.length - 1]?.signature;
+      lastSignature = transactions.length > 0 ? transactions[transactions.length - 1]?.signature : null;
 
       console.log(`📉 Oldest Tx Time: ${oldestTxTime}`);
 
