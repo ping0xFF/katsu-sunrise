@@ -49,6 +49,11 @@ async function fetchSurroundingTrades(trade) {
 
       console.log(`✅ Fetched ${transactions.length} signatures.`);
 
+      // Print each signature before fetching details
+      transactions.forEach(({ signature }, index) => {
+        console.log(`🆔 Fetched Signature #${index + 1}: ${signature}`);
+      });
+
       if (!transactions.length) {
         console.log(`⚠️ No more signatures found. Stopping pagination.`);
         break;
@@ -66,11 +71,26 @@ async function fetchSurroundingTrades(trade) {
         )
       );
 
+      // console.log('🔎 Detailed Transactions:', JSON.stringify(detailedTransactions, null, 2));
+
       console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
 
       const filteredBatch = detailedTransactions
-        .filter((tx) => tx && tx.transaction && tx.blockTime) // Filter out invalid transactions
-        .filter((tx) => tx.blockTime >= startTime && tx.blockTime <= endTime) // Filter by time window
+        .filter((tx) => {
+          if (!tx) {
+            console.warn('⚠️ Skipping null transaction.');
+            return false;
+          }
+          if (!tx.transaction || !tx.blockTime) {
+            console.warn('⚠️ Skipping transaction with missing data.');
+            return false;
+          }
+          if (!tx.transaction.message || !tx.transaction.message.accountKeys) {
+            console.warn('⚠️ Skipping transaction with missing accountKeys.');
+            return false;
+          }
+          return tx.blockTime >= startTime && tx.blockTime <= endTime;
+        })
         .map((tx) => ({
           signature: tx.transaction.signatures[0],
           timestamp: tx.blockTime,
