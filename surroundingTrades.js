@@ -39,7 +39,7 @@ async function fetchSurroundingTrades(trade) {
 
     const transactions = await connection.getSignaturesForAddress(
       new PublicKey(FOCUS_TOKEN_PAIR),
-      { before: signature, limit: 2 } // Fetch 10 transactions
+      { before: signature, limit: 2 }
     );
 
     console.log(`✅ Fetched ${transactions.length} signatures.`);
@@ -59,46 +59,55 @@ async function fetchSurroundingTrades(trade) {
     console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
 
     const filteredBatch = detailedTransactions
-    .filter((tx, index) => {
-      console.log(`📝 Debugging Transaction #${index + 1}:`);
-      console.log(`🔑 Signature: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
-      console.log(`📅 BlockTime: ${tx?.blockTime || 'N/A'}`);
-      console.log(`📦 Transaction Object:`, tx?.transaction || 'N/A');
-      console.log(`🗝️ Message Object:`, tx?.transaction?.message || 'N/A');
-      console.log(`🔗 AccountKeys:`, tx?.transaction?.message?.accountKeys || 'N/A');
-      
-      if (!tx) {
-        console.warn('⚠️ Skipping null transaction.');
-        return false;
-      }
-      if (!tx.transaction || !tx.blockTime) {
-        console.warn(`⚠️ Skipping transaction with missing data. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
-        return false;
-      }
-      if (!tx.transaction.message) {
-        console.warn(`⚠️ Skipping transaction with missing message object. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
-        return false;
-      }
-  
-      // Handle both Message and MessageV0
-      const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
-      if (!Array.isArray(accountKeys)) {
-        console.warn(`⚠️ Transaction has invalid or missing accountKeys. Tx ID: ${tx.transaction.signatures[0]}`);
-        return false;
-      }
-  
-      return tx.blockTime >= startTime && tx.blockTime <= endTime;
-    })
-    .map((tx, index) => {
-      const timeDiff = timestamp - tx.blockTime;
-      const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
-      console.log(`🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s`);
-      return {
-        signature: tx.transaction.signatures[0],
-        timestamp: tx.blockTime,
-        accounts: accountKeys.map((key) => key.toBase58()),
-      };
-    });
+      .filter((tx, index) => {
+        console.log(`📝 Debugging Transaction #${index + 1}:`);
+        console.log(`🔑 Signature: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
+        console.log(`📅 BlockTime: ${tx?.blockTime || 'N/A'}`);
+        console.log(`📦 Transaction Object:`, tx?.transaction || 'N/A');
+        console.log(`🗝️ Message Object:`, tx?.transaction?.message || 'N/A');
+        console.log(
+          `🔗 AccountKeys:`,
+          (tx?.transaction?.message?.accountKeys || tx?.transaction?.message?.staticAccountKeys || []).map((key) =>
+            key.toBase58()
+          ) || 'N/A'
+        );
+
+        if (!tx) {
+          console.warn('⚠️ Skipping null transaction.');
+          return false;
+        }
+        if (!tx.transaction || !tx.blockTime) {
+          console.warn(
+            `⚠️ Skipping transaction with missing data. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
+          );
+          return false;
+        }
+        if (!tx.transaction.message) {
+          console.warn(
+            `⚠️ Skipping transaction with missing message object. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
+          );
+          return false;
+        }
+
+        // Handle both Message and MessageV0
+        const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
+        if (!Array.isArray(accountKeys)) {
+          console.warn(`⚠️ Transaction has invalid or missing accountKeys. Tx ID: ${tx.transaction.signatures[0]}`);
+          return false;
+        }
+
+        return tx.blockTime >= startTime && tx.blockTime <= endTime;
+      })
+      .map((tx, index) => {
+        const timeDiff = timestamp - tx.blockTime;
+        console.log(
+          `🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s`
+        );
+        return {
+          signature: tx.transaction.signatures[0],
+          timestamp: tx.blockTime,
+        };
+      });
 
     console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
     console.log(`✅ Total surrounding trades found: ${filteredBatch.length}`);
