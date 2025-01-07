@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const TIME_WINDOW = 1; // Time window in seconds
+const TIME_WINDOW = 5; // Time window in seconds
 const FOCUS_TOKEN_PAIR = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Hardcoded for now
 
 // Initialize Solana Connection
@@ -44,7 +44,7 @@ async function fetchSurroundingTrades(trade) {
 
       const transactions = await connection.getSignaturesForAddress(
         new PublicKey(FOCUS_TOKEN_PAIR),
-        { before: beforeSignature, limit: 10 }
+        { before: beforeSignature, limit: 50 }
       );
 
       console.log(`✅ Fetched ${transactions.length} signatures.`);
@@ -120,7 +120,7 @@ async function fetchSurroundingTrades(trade) {
 
       allTransactions.push(...filteredBatch);
 
-      if (transactions.length < 10) {
+      if (transactions.length < 10 || transactions[transactions.length - 1]?.blockTime < startTime) {
         keepFetching = false;
       } else {
         beforeSignature = transactions[transactions.length - 1].signature;
