@@ -79,21 +79,24 @@ async function fetchSurroundingTrades(trade) {
         console.warn(`⚠️ Skipping transaction with missing message object. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
         return false;
       }
-      if (!Array.isArray(tx.transaction.message.accountKeys)) {
+  
+      // Handle both Message and MessageV0
+      const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
+      if (!Array.isArray(accountKeys)) {
         console.warn(`⚠️ Transaction has invalid or missing accountKeys. Tx ID: ${tx.transaction.signatures[0]}`);
+        return false;
       }
   
       return tx.blockTime >= startTime && tx.blockTime <= endTime;
     })
     .map((tx, index) => {
       const timeDiff = timestamp - tx.blockTime;
+      const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
       console.log(`🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s`);
       return {
         signature: tx.transaction.signatures[0],
         timestamp: tx.blockTime,
-        accounts: Array.isArray(tx.transaction.message.accountKeys)
-          ? tx.transaction.message.accountKeys.map((key) => key.toBase58())
-          : [],
+        accounts: accountKeys.map((key) => key.toBase58()),
       };
     });
 
