@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const TIME_WINDOW = 15; // 15 seconds for testing
+const TIME_WINDOW = 15; // Reduced to 15 seconds for testing
 const FOCUS_TOKEN_PAIR = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Hardcoded for now
 
 // Initialize Solana Connection
@@ -24,7 +24,7 @@ function loadFocusTrades() {
 }
 
 /**
- * Fetch Transactions Within a Time Window (No Pagination)
+ * Fetch Transactions Within a Time Window
  */
 async function fetchSurroundingTrades(trade) {
   try {
@@ -32,27 +32,17 @@ async function fetchSurroundingTrades(trade) {
     console.log(`🔍 Fetching transactions within ${TIME_WINDOW} seconds before focus transaction`);
     console.log(`🎯 Focus Transaction: ${signature}, Timestamp: ${timestamp}`);
 
-    const startTime = timestamp - TIME_WINDOW; // 15 seconds before focus
+    const startTime = timestamp - TIME_WINDOW; // Window start
     const endTime = timestamp; // Focus transaction timestamp
 
     console.log(`⏳ Fetching transactions BEFORE signature: ${signature}`);
 
     const transactions = await connection.getSignaturesForAddress(
       new PublicKey(FOCUS_TOKEN_PAIR),
-      { before: signature, limit: 10 }
+      { before: signature, limit: 10 } // Fetch 10 transactions
     );
 
     console.log(`✅ Fetched ${transactions.length} signatures.`);
-
-    // Print each signature before fetching details
-    transactions.forEach(({ signature }, index) => {
-      console.log(`🆔 Fetched Signature #${index + 1}: ${signature}`);
-    });
-
-    if (!transactions.length) {
-      console.log(`⚠️ No signatures found. Exiting.`);
-      return [];
-    }
 
     const detailedTransactions = await Promise.all(
       transactions.map(({ signature }) =>
@@ -68,7 +58,6 @@ async function fetchSurroundingTrades(trade) {
 
     console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
 
-    // Filter transactions by time window
     const filteredBatch = detailedTransactions
       .filter((tx) => {
         if (!tx) {
@@ -85,15 +74,18 @@ async function fetchSurroundingTrades(trade) {
         }
         return tx.blockTime >= startTime && tx.blockTime <= endTime;
       })
-      .map((tx) => ({
-        signature: tx.transaction.signatures[0],
-        timestamp: tx.blockTime,
-        accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
-      }));
+      .map((tx, index) => {
+        const timeDiff = timestamp - tx.blockTime;
+        console.log(`🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s`);
+        return {
+          signature: tx.transaction.signatures[0],
+          timestamp: tx.blockTime,
+          accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
+        };
+      });
 
     console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
     console.log(`✅ Total surrounding trades found: ${filteredBatch.length}`);
-
     return filteredBatch;
   } catch (error) {
     console.error('❌ Error fetching surrounding trades:', error.message);
