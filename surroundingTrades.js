@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const TIME_WINDOW = 5 * 60; // 5 minutes in seconds (adjust to 1 * 60 if needed)
+const TIME_WINDOW = 15; // 15 seconds for testing
 const FOCUS_TOKEN_PAIR = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Hardcoded for now
 
 // Initialize Solana Connection
@@ -24,98 +24,77 @@ function loadFocusTrades() {
 }
 
 /**
- * Fetch Transactions Within a Time Window
+ * Fetch Transactions Within a Time Window (No Pagination)
  */
 async function fetchSurroundingTrades(trade) {
   try {
     const { timestamp, signature } = trade;
-    console.log(`🔍 Fetching transactions within ${TIME_WINDOW / 60} minutes before focus transaction`);
+    console.log(`🔍 Fetching transactions within ${TIME_WINDOW} seconds before focus transaction`);
     console.log(`🎯 Focus Transaction: ${signature}, Timestamp: ${timestamp}`);
 
-    const startTime = timestamp - TIME_WINDOW; // Window start (e.g., 5 minutes before focus)
+    const startTime = timestamp - TIME_WINDOW; // 15 seconds before focus
     const endTime = timestamp; // Focus transaction timestamp
 
-    let lastSignature = signature;
-    let surroundingTrades = [];
-    let continueFetching = true;
+    console.log(`⏳ Fetching transactions BEFORE signature: ${signature}`);
 
-    while (continueFetching) {
-      console.log(`⏳ Fetching transactions BEFORE signature: ${lastSignature || 'N/A'}`);
+    const transactions = await connection.getSignaturesForAddress(
+      new PublicKey(FOCUS_TOKEN_PAIR),
+      { before: signature, limit: 10 }
+    );
 
-      const transactions = await connection.getSignaturesForAddress(
-        new PublicKey(FOCUS_TOKEN_PAIR),
-        { before: lastSignature, limit: 10 } // Fetch in batches of 10 for efficiency
-      );
+    console.log(`✅ Fetched ${transactions.length} signatures.`);
 
-      console.log(`✅ Fetched ${transactions.length} signatures.`);
+    // Print each signature before fetching details
+    transactions.forEach(({ signature }, index) => {
+      console.log(`🆔 Fetched Signature #${index + 1}: ${signature}`);
+    });
 
-      // Print each signature before fetching details
-      transactions.forEach(({ signature }, index) => {
-        console.log(`🆔 Fetched Signature #${index + 1}: ${signature}`);
-      });
-
-      if (!transactions.length) {
-        console.log(`⚠️ No more signatures found. Stopping pagination.`);
-        break;
-      }
-
-      const detailedTransactions = await Promise.all(
-        transactions.map(({ signature }) =>
-          connection.getTransaction(signature, {
-            commitment: 'finalized',
-            maxSupportedTransactionVersion: 0,
-          }).catch((err) => {
-            console.warn(`❌ Failed to fetch transaction: ${signature}`, err.message);
-            return null;
-          })
-        )
-      );
-
-      // console.log('🔎 Detailed Transactions:', JSON.stringify(detailedTransactions, null, 2));
-
-      console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
-
-      const filteredBatch = detailedTransactions
-        .filter((tx) => {
-          if (!tx) {
-            console.warn('⚠️ Skipping null transaction.');
-            return false;
-          }
-          if (!tx.transaction || !tx.blockTime) {
-            console.warn('⚠️ Skipping transaction with missing data.');
-            return false;
-          }
-          if (!tx.transaction.message || !tx.transaction.message.accountKeys) {
-            console.warn('⚠️ Skipping transaction with missing accountKeys.');
-            return false;
-          }
-          return tx.blockTime >= startTime && tx.blockTime <= endTime;
-        })
-        .map((tx) => ({
-          signature: tx.transaction.signatures[0],
-          timestamp: tx.blockTime,
-          accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
-        }));
-
-      console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
-
-      // Append to surrounding trades
-      surroundingTrades.push(...filteredBatch);
-
-      // Handle pagination safely
-      const oldestTxTime = detailedTransactions[detailedTransactions.length - 1]?.blockTime || 0;
-      lastSignature = transactions.length > 0 ? transactions[transactions.length - 1]?.signature : null;
-
-      console.log(`📉 Oldest Tx Time: ${oldestTxTime}`);
-
-      if (oldestTxTime < startTime || transactions.length < 10) {
-        console.log(`🛑 Stopping pagination. Reached time window or end of transactions.`);
-        continueFetching = false;
-      }
+    if (!transactions.length) {
+      console.log(`⚠️ No signatures found. Exiting.`);
+      return [];
     }
 
-    console.log(`✅ Total surrounding trades found: ${surroundingTrades.length}`);
-    return surroundingTrades;
+    const detailedTransactions = await Promise.all(
+      transactions.map(({ signature }) =>
+        connection.getTransaction(signature, {
+          commitment: 'finalized',
+          maxSupportedTransactionVersion: 0,
+        }).catch((err) => {
+          console.warn(`❌ Failed to fetch transaction: ${signature}`, err.message);
+          return null;
+        })
+      )
+    );
+
+    console.log(`📊 Processed ${detailedTransactions.length} detailed transactions.`);
+
+    // Filter transactions by time window
+    const filteredBatch = detailedTransactions
+      .filter((tx) => {
+        if (!tx) {
+          console.warn('⚠️ Skipping null transaction.');
+          return false;
+        }
+        if (!tx.transaction || !tx.blockTime) {
+          console.warn('⚠️ Skipping transaction with missing data.');
+          return false;
+        }
+        if (!tx.transaction.message || !tx.transaction.message.accountKeys) {
+          console.warn('⚠️ Skipping transaction with missing accountKeys.');
+          return false;
+        }
+        return tx.blockTime >= startTime && tx.blockTime <= endTime;
+      })
+      .map((tx) => ({
+        signature: tx.transaction.signatures[0],
+        timestamp: tx.blockTime,
+        accounts: tx.transaction.message.accountKeys.map((key) => key.toBase58()),
+      }));
+
+    console.log(`🔍 Found ${filteredBatch.length} transactions within time window.`);
+    console.log(`✅ Total surrounding trades found: ${filteredBatch.length}`);
+
+    return filteredBatch;
   } catch (error) {
     console.error('❌ Error fetching surrounding trades:', error.message);
     return [];
