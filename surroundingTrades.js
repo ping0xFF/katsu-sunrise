@@ -4,8 +4,11 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const TIME_WINDOW = 5; // Time window in seconds
-const FOCUS_TOKEN_PAIR = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Hardcoded for now
+const TIME_WINDOW = 1; // Time window in seconds
+// const FOCUS_TOKEN_PAIR = 'Z4s3dwRvVK3Me9NJZjdQME6hjbQLG9KRSZDB93tD2dT'; // Tokenpair to monitor
+const FOCUS_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Token to monitor
+const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // Native Solana Token
+const KEYWORDS = ['ray_log', 'swap', 'trade', 'buy']; // Keywords for identifying swaps
 
 // Initialize Solana Connection
 const connection = new Connection(ALCHEMY_API_URL, 'finalized');
@@ -21,6 +24,60 @@ function loadFocusTrades() {
     console.error('❌ Failed to load focus_trades.json:', error.message);
     return [];
   }
+}
+
+/**
+ * Check if a transaction represents a FOCUS_TOKEN buy
+ */
+function isFocusTokenBuy(tx) {
+  const { meta } = tx;
+
+  if (!meta || !meta.logMessages) return false;
+
+  console.log('🔄 Analyzing transaction for token buy...');
+
+  // ✅ Check Raydium Swap Keywords in Logs
+  const logsContainKeywords = meta.logMessages.some((log) =>
+    KEYWORDS.some((keyword) => log.toLowerCase().includes(keyword))
+  );
+
+  console.log(`🔍 Logs contain keywords: ${logsContainKeywords}`);
+
+  if (!logsContainKeywords) return false;
+
+  // ✅ Check FOCUS_TOKEN Balance Changes
+  const preTokenBalance = meta.preTokenBalances?.find(
+    (balance) => balance.mint === FOCUS_TOKEN
+  )?.uiTokenAmount.amount || 0;
+
+  const postTokenBalance = meta.postTokenBalances?.find(
+    (balance) => balance.mint === FOCUS_TOKEN
+  )?.uiTokenAmount.amount || 0;
+
+  console.log(`💰 Token Balance - Pre: ${preTokenBalance}, Post: ${postTokenBalance}`);
+
+  const preSOLBalance = meta.preBalances?.[0] || 0; // Assuming wallet is first in accountKeys
+  const postSOLBalance = meta.postBalances?.[0] || 0;
+
+  console.log(`💵 SOL Balance - Pre: ${preSOLBalance}, Post: ${postSOLBalance}`);
+
+  const isTokenIncrease = postTokenBalance > preTokenBalance;
+  const isSOLDecrease = postSOLBalance < preSOLBalance;
+
+  console.log(`✅ Token Balance Increased: ${isTokenIncrease}`);
+  console.log(`🔻 SOL Balance Decreased: ${isSOLDecrease}`);
+
+  const isBuy = isTokenIncrease && isSOLDecrease;
+
+  if (isBuy) {
+    const solSpent = (preSOLBalance - postSOLBalance) / 1e9; // Convert lamports to SOL
+    console.log(`💸 SOL Spent: ${solSpent} SOL\n`);
+    tx.solSpent = solSpent; // Attach solSpent to the transaction object
+  }
+
+  console.log(`🎯 Final Evaluation: Is Buy Transaction: ${isBuy}\n`);
+
+  return isBuy;
 }
 
 /**
@@ -43,7 +100,7 @@ async function fetchSurroundingTrades(trade) {
       console.log(`⏳ Fetching transactions BEFORE signature: ${beforeSignature}`);
 
       const transactions = await connection.getSignaturesForAddress(
-        new PublicKey(FOCUS_TOKEN_PAIR),
+        new PublicKey(FOCUS_TOKEN),
         { before: beforeSignature, limit: 50 }
       );
 
@@ -86,12 +143,14 @@ async function fetchSurroundingTrades(trade) {
             console.warn('⚠️ Skipping null transaction.');
             return false;
           }
+
           if (!tx.transaction || !tx.blockTime) {
             console.warn(
               `⚠️ Skipping transaction with missing data. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
             );
             return false;
           }
+
           if (!tx.transaction.message) {
             console.warn(
               `⚠️ Skipping transaction with missing message object. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
@@ -105,22 +164,26 @@ async function fetchSurroundingTrades(trade) {
             return false;
           }
 
-          return tx.blockTime >= startTime && tx.blockTime <= endTime;
+          const isWithinTimeWindow = tx.blockTime >= startTime && tx.blockTime <= endTime;
+          const isBuyTransaction = isFocusTokenBuy(tx);
+
+          return isWithinTimeWindow && isBuyTransaction;
         })
         .map((tx, index) => {
           const timeDiff = timestamp - tx.blockTime;
           console.log(
-            `🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s`
+            `🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s | SOL Spent: ${tx.solSpent || 0}`
           );
           return {
             signature: tx.transaction.signatures[0],
             timestamp: tx.blockTime,
+            solSpent: tx.solSpent || 0,
           };
         });
 
       allTransactions.push(...filteredBatch);
 
-      if (transactions.length < 10 || transactions[transactions.length - 1]?.blockTime < startTime) {
+      if (transactions.length < 15 || transactions[transactions.length - 1]?.blockTime < startTime) {
         keepFetching = false;
       } else {
         beforeSignature = transactions[transactions.length - 1].signature;
