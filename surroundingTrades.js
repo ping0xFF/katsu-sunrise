@@ -56,7 +56,7 @@ function isFocusTokenBuy(tx) {
 
   console.log(`💰 Token Balance - Pre: ${preTokenBalance}, Post: ${postTokenBalance}`);
 
-  const preSOLBalance = meta.preBalances?.[0] || 0; // Assuming wallet is first in accountKeys
+  const preSOLBalance = meta.preBalances?.[0] || 0;
   const postSOLBalance = meta.postBalances?.[0] || 0;
 
   console.log(`💵 SOL Balance - Pre: ${preSOLBalance}, Post: ${postSOLBalance}`);
@@ -76,7 +76,6 @@ function isFocusTokenBuy(tx) {
   }
 
   console.log(`🎯 Final Evaluation: Is Buy Transaction: ${isBuy}\n`);
-
   return isBuy;
 }
 
@@ -127,7 +126,7 @@ async function fetchSurroundingTrades(trade) {
 
       const filteredBatch = detailedTransactions
         .filter((tx, index) => {
-          // console.log(`📝 Debugging Transaction #${index + 1}:`);
+          console.log('\n==== Transaction Start ====');
           console.log(`🔑 Signature: ${tx?.transaction?.signatures?.[0] || 'N/A'}`);
           console.log(`📅 BlockTime: ${tx?.blockTime || 'N/A'}`);
           // console.log(`📦 Transaction Object:`, tx?.transaction || 'N/A');
@@ -139,8 +138,9 @@ async function fetchSurroundingTrades(trade) {
           //   ) || 'N/A'
           // );
 
-          if (!tx) {
-            console.warn('⚠️ Skipping null transaction.');
+          if (!tx || !tx.transaction || !tx.blockTime) {
+            console.warn('⚠️ Skipping invalid transaction.');
+            console.log('==== Transaction End ====\n');
             return false;
           }
 
@@ -148,6 +148,7 @@ async function fetchSurroundingTrades(trade) {
             console.warn(
               `⚠️ Skipping transaction with missing data. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
             );
+            console.log('==== Transaction End ====\n');
             return false;
           }
 
@@ -155,25 +156,30 @@ async function fetchSurroundingTrades(trade) {
             console.warn(
               `⚠️ Skipping transaction with missing message object. Tx ID: ${tx?.transaction?.signatures?.[0] || 'N/A'}`
             );
+            console.log('==== Transaction End ====\n');
             return false;
           }
 
           const accountKeys = tx.transaction.message.accountKeys || tx.transaction.message.staticAccountKeys;
           if (!Array.isArray(accountKeys)) {
             console.warn(`⚠️ Transaction has invalid or missing accountKeys. Tx ID: ${tx.transaction.signatures[0]}`);
+            console.log('==== Transaction End ====\n');
             return false;
           }
 
-          const isWithinTimeWindow = tx.blockTime >= startTime && tx.blockTime <= endTime;
-          const isBuyTransaction = isFocusTokenBuy(tx);
+          const withinTimeRange = tx.blockTime >= startTime && tx.blockTime <= endTime;
+          if (!withinTimeRange) {
+            console.warn('⚠️ Skipping transaction outside time range.');
+            console.log('==== Transaction End ====\n');
+            return false;
+          }
 
-          return isWithinTimeWindow && isBuyTransaction;
+          const isBuy = isFocusTokenBuy(tx);
+          console.log('==== Transaction End ====\n');
+          return isBuy;
         })
         .map((tx, index) => {
           const timeDiff = timestamp - tx.blockTime;
-          console.log(
-            `🆔 Fetched Signature #${index + 1}: ${tx.transaction.signatures[0]} | Timestamp: ${tx.blockTime} | Δ: ${timeDiff}s | SOL Spent: ${tx.solSpent || 0}`
-          );
           return {
             signature: tx.transaction.signatures[0],
             timestamp: tx.blockTime,
@@ -183,10 +189,9 @@ async function fetchSurroundingTrades(trade) {
 
       allTransactions.push(...filteredBatch);
 
-      if (transactions.length < 15 || transactions[transactions.length - 1]?.blockTime < startTime) {
+      beforeSignature = transactions[transactions.length - 1].signature;
+      if (transactions.length < 50 || transactions[transactions.length - 1]?.blockTime < startTime) {
         keepFetching = false;
-      } else {
-        beforeSignature = transactions[transactions.length - 1].signature;
       }
     }
 
