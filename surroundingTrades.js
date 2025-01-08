@@ -4,7 +4,7 @@ require('dotenv').config();
 
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
-const TIME_WINDOW = 1; // Time window in seconds
+const TIME_WINDOW = 5; // Time window in seconds
 // const FOCUS_TOKEN_PAIR = 'Z4s3dwRvVK3Me9NJZjdQME6hjbQLG9KRSZDB93tD2dT'; // Tokenpair to monitor
 const FOCUS_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Token to monitor
 const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // Native Solana Token
@@ -90,6 +90,9 @@ async function fetchSurroundingTrades(trade) {
 
     const startTime = timestamp - TIME_WINDOW;
     const endTime = timestamp;
+
+    console.log(`🕒 Time Window Start: ${new Date(startTime * 1000).toISOString()} (Unix: ${startTime})`);
+    console.log(`🕒 Time Window End: ${new Date(endTime * 1000).toISOString()} (Unix: ${endTime})`);
 
     let beforeSignature = signature;
     let allTransactions = [];
