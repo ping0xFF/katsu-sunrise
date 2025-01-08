@@ -2,10 +2,13 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 const fs = require('fs');
 require('dotenv').config();
 
+// go back to first trade of token and get that date
+// go back through all trades in wallet until date of first trade of token
+
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5'; // Wallet to focus on
-const FOCUS_TOKEN = '4TxguLvR4vXwpS4CJXEemZ9DUhVYjhmsaTkqJkYrpump'; // Token to monitor (e.g., Amethyst)
+const FOCUS_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // Token to monitor (e.g., Amethyst)
 // const FOCUS_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // Example for other tokens
 const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // Native Solana Token
 const KEYWORDS = ['ray_log', 'swap', 'trade', 'buy']; // Keywords for identifying swaps
@@ -78,7 +81,7 @@ async function fetchFocusTrades() {
     const walletAddress = new PublicKey(FOCUS_WALLET);
 
     // Fetch recent signatures
-    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 25 });
+    const signatures = await connection.getSignaturesForAddress(walletAddress, { limit: 50 });
     console.log(`✅ Found ${signatures.length} recent transactions.`);
 
     const transactions = await Promise.all(
