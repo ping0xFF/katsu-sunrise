@@ -189,9 +189,15 @@ async function fetchSurroundingTrades(trade) {
 
       allTransactions.push(...filteredBatch);
 
-      beforeSignature = transactions[transactions.length - 1].signature;
-      if (transactions.length < 50 || transactions[transactions.length - 1]?.blockTime < startTime) {
+      // ✅ Continue fetching until no valid transactions remain
+      if (transactions.length < 50) {
         keepFetching = false;
+      } else {
+        beforeSignature = transactions[transactions.length - 1].signature;
+        const lastBlockTime = transactions[transactions.length - 1]?.blockTime || 0;
+        if (lastBlockTime < startTime) {
+          keepFetching = false;
+        }
       }
     }
 
