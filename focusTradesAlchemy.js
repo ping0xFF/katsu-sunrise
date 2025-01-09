@@ -2,14 +2,10 @@ const { Connection, PublicKey } = require('@solana/web3.js');
 const fs = require('fs');
 require('dotenv').config();
 
-// go back to first trade of token and get that date
-// go back through all trades in wallet until date of first trade of token
-
 // Constants
 const ALCHEMY_API_URL = process.env.ALCHEMY_API_URL;
 const FOCUS_WALLET = 'HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5'; // Wallet to focus on
-const FOCUS_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // Token to monitor (e.g., Amethyst)
-// const FOCUS_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // Example for other tokens
+const FOCUS_TOKEN = '9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump'; // Token to monitor
 const SOL_TOKEN = 'So11111111111111111111111111111111111111112'; // Native Solana Token
 const KEYWORDS = ['ray_log', 'swap', 'trade', 'buy']; // Keywords for identifying swaps
 
@@ -20,7 +16,7 @@ const connection = new Connection(ALCHEMY_API_URL, 'finalized');
  * Check if a transaction represents a FOCUS_TOKEN buy
  */
 function isFocusTokenBuy(tx) {
-  const { meta } = tx;
+  const { meta, transaction } = tx;
 
   if (!meta || !meta.logMessages) return false;
 
@@ -35,13 +31,17 @@ function isFocusTokenBuy(tx) {
 
   if (!logsContainKeywords) return false;
 
-  // ✅ Check FOCUS_TOKEN Balance Changes
+  // ✅ Account Ownership Validation (OR Logic)
   const preTokenBalance = meta.preTokenBalances?.find(
-    (balance) => balance.owner === FOCUS_WALLET && balance.mint === FOCUS_TOKEN
+    (balance) => 
+      (balance.owner === FOCUS_WALLET || transaction.message.accountKeys.some(key => key.toBase58() === FOCUS_WALLET)) &&
+      balance.mint === FOCUS_TOKEN
   )?.uiTokenAmount.amount || 0;
 
   const postTokenBalance = meta.postTokenBalances?.find(
-    (balance) => balance.owner === FOCUS_WALLET && balance.mint === FOCUS_TOKEN
+    (balance) => 
+      (balance.owner === FOCUS_WALLET || transaction.message.accountKeys.some(key => key.toBase58() === FOCUS_WALLET)) &&
+      balance.mint === FOCUS_TOKEN
   )?.uiTokenAmount.amount || 0;
 
   console.log(`💰 Token Balance - Pre: ${preTokenBalance}, Post: ${postTokenBalance}`);
