@@ -12,12 +12,14 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// Fetch wallet transaction history
-async function getWalletTransactions(wallet) {
+async function getWalletTransactions(wallet, before = null) {
   try {
-    const url = `${HELIUS_API_URL}/${wallet}/transactions?api-key=${API_KEY}`;
+    let url = `${HELIUS_API_URL}/${wallet}/transactions?api-key=${API_KEY}`;
+    if (before) {
+      url += `&before=${before}`;
+    }
     const response = await axios.get(url);
-    console.log(`Total transactions fetched: ${response.data.length}`);
+    console.log(`Fetched ${response.data.length} transactions.`);
     return response.data;
   } catch (error) {
     console.error("Error fetching transactions:", error.response?.data || error.message);
@@ -38,16 +40,33 @@ function filterTokenBuys(transactions, wallet, mintAddress) {
   });
 }
 
-// Main function
+// Main function with pagination
 async function findTokenBuys() {
   console.log("Fetching wallet transactions...");
-  const transactions = await getWalletTransactions(walletAddress);
+  let before = null;
+  let hasMore = true;
+  let allTokenBuys = [];
 
-  console.log("Filtering for token buys...");
-  const tokenBuys = filterTokenBuys(transactions, walletAddress, targetMintAddress);
+  while (hasMore) {
+    const transactions = await getWalletTransactions(walletAddress, before);
 
-  console.log(`Found ${tokenBuys.length} token buys:`);
-  console.log(JSON.stringify(tokenBuys, null, 2)); // Pretty-print the buys
+    if (transactions.length === 0) {
+      hasMore = false;
+      break;
+    }
+
+    console.log("Filtering for token buys...");
+    const tokenBuys = filterTokenBuys(transactions, walletAddress, targetMintAddress);
+    allTokenBuys = allTokenBuys.concat(tokenBuys);
+
+    // Update the `before` parameter for pagination
+    before = transactions[transactions.length - 1]?.signature;
+
+    console.log(`Total token buys found so far: ${allTokenBuys.length}`);
+  }
+
+  console.log(`Found ${allTokenBuys.length} total token buys:`);
+  console.log(JSON.stringify(allTokenBuys, null, 2)); // Pretty-print the buys
 }
 
 // Execute
