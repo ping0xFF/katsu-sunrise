@@ -55,6 +55,7 @@ async function findTokenBuys() {
   let before = null;
   let hasMore = true;
   let allTokenBuys = [];
+  let attempts = 0; // To prevent infinite loop
 
   while (hasMore) {
     const transactions = await getWalletTransactions(walletAddress, before);
@@ -69,7 +70,7 @@ async function findTokenBuys() {
     const tokenBuys = filterTokenBuys(transactions, walletAddress, targetMintAddress);
     allTokenBuys = allTokenBuys.concat(tokenBuys);
 
-    // Check if any transaction is older than the token creation date
+    // Check the last transaction for blockTime
     const lastTransaction = transactions[transactions.length - 1];
     if (lastTransaction?.blockTime) {
       const oldestTransactionDate = new Date(lastTransaction.blockTime * 1000);
@@ -79,13 +80,19 @@ async function findTokenBuys() {
         break;
       }
     } else {
-      console.warn("Last transaction blockTime is invalid or missing. Stopping.");
-      break;
+      console.warn("Last transaction is missing a valid blockTime. Skipping to next page.");
     }
 
     // Update the `before` parameter for pagination
-    before = lastTransaction?.signature;
+    before = lastTransaction?.signature || before;
     console.log(`Updated 'before' parameter for pagination: ${before}`);
+
+    // Increment attempts and check for infinite loop
+    attempts++;
+    if (attempts > 10) { // Adjust as needed
+      console.error("Too many pagination attempts without valid data. Exiting to prevent infinite loop.");
+      break;
+    }
 
     console.log(`Total token buys found so far: ${allTokenBuys.length}`);
   }
