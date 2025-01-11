@@ -6,7 +6,10 @@ const HELIUS_API_URL = process.env.HELIUS_API_URL;
 const API_KEY = process.env.HELIUS_API_KEY; // Your Helius API key
 const walletAddress = "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"; // Replace with your wallet address
 const targetMintAddress = "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"; // Replace with your token mint address
-const tokenCreationTimestamp = 1672608000000; // Replace with the hardcoded timestamp (e.g., January 1, 2023, in milliseconds)
+const date = new Date('2025-01-03T00:02:00Z');  // rough date of token creation
+console.log(date.getTime());
+tokenCreationTimestamp = date.getTime();
+//const tokenCreationTimestamp = 1672608000000; // Replace with the hardcoded timestamp (e.g., January 1, 2023, in milliseconds)
 
 if (!API_KEY) {
   console.error("Error: Helius API key is not defined in the .env file.");
