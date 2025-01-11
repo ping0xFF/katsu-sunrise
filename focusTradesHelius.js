@@ -7,6 +7,10 @@ const API_KEY = process.env.HELIUS_API_KEY; // Your Helius API key
 const walletAddress = "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"; // Replace with your wallet address
 const targetMintAddress = "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"; // Replace with your token mint address
 
+// Human-readable token creation date
+const tokenCreationDate = "2025-01-02T12:00:00Z"; // Replace with your token creation date
+const tokenCreationTimestamp = new Date(tokenCreationDate).getTime(); // Convert to milliseconds
+
 if (!API_KEY) {
   console.error("Error: Helius API key is not defined in the .env file.");
   process.exit(1);
@@ -44,6 +48,7 @@ function filterTokenBuys(transactions, wallet, mintAddress) {
 // Main function with pagination
 async function findTokenBuys() {
   console.log("Fetching wallet transactions...");
+  console.log(`Token creation timestamp: ${tokenCreationTimestamp} (${tokenCreationDate})`);
   let before = null;
   let hasMore = true;
   let allTokenBuys = [];
@@ -57,16 +62,41 @@ async function findTokenBuys() {
     }
 
     console.log("Filtering for token buys...");
-    const tokenBuys = filterTokenBuys(transactions, walletAddress, targetMintAddress);
-    allTokenBuys = allTokenBuys.concat(tokenBuys);
+    for (const tx of transactions) {
+      const txTimestampMs = tx.timestamp * 1000; // Convert to milliseconds
+      console.log(
+        `Current transaction timestamp: ${txTimestampMs} (${new Date(txTimestampMs).toISOString()})`
+      );
+      console.log(
+        `Comparison: Token creation timestamp (${tokenCreationTimestamp}) ${
+          txTimestampMs >= tokenCreationTimestamp ? "<=" : ">"
+        } Current transaction timestamp (${txTimestampMs})`
+      );
 
-    // Update the `before` parameter for pagination
-    before = transactions[transactions.length - 1]?.signature;
+      if (txTimestampMs < tokenCreationTimestamp) {
+        console.log("Transaction is before the token creation timestamp. Stopping.");
+        hasMore = false;
+        break;
+      }
+
+      const tokenBuys = filterTokenBuys([tx], walletAddress, targetMintAddress);
+      allTokenBuys = allTokenBuys.concat(tokenBuys);
+
+      if (tokenBuys.length > 0) {
+        console.log(`🔍 Found ${tokenBuys.length} token buys in this transaction.`);
+      }
+    }
 
     console.log(`Total token buys found so far: ${allTokenBuys.length}`);
+
+    // Update the `before` parameter for pagination
+    if (hasMore) {
+      before = transactions[transactions.length - 1]?.signature;
+      console.log(`Updated 'before' parameter for pagination: ${before}`);
+    }
   }
 
-  console.log(`Found ${allTokenBuys.length} total token buys:`);
+  console.log(`✅ Found ${allTokenBuys.length} total token buys:`);
   console.log(JSON.stringify(allTokenBuys, null, 2)); // Pretty-print the buys
 }
 
