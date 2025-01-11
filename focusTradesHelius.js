@@ -1,6 +1,7 @@
 import "dotenv/config";
 import axios from "axios";
 import chalk from "chalk";
+import fs from "fs";
 
 // Configuration
 const HELIUS_API_URL = process.env.HELIUS_API_URL;
@@ -46,6 +47,38 @@ function filterTokenBuys(transactions, wallet, mintAddress) {
   });
 }
 
+// Extract relevant details for token buys
+function extractBuyDetails(transaction) {
+  const { signature, timestamp, tokenTransfers, nativeTransfers } = transaction;
+  const txDetails = {
+    signature,
+    date: new Date(timestamp * 1000).toISOString(),
+    tokenTransfers: [],
+    solTransfers: [],
+  };
+
+  // Extract token transfer details
+  tokenTransfers.forEach((transfer) => {
+    txDetails.tokenTransfers.push({
+      from: transfer.fromUserAccount,
+      to: transfer.toUserAccount,
+      amount: transfer.tokenAmount,
+      mint: transfer.mint,
+    });
+  });
+
+  // Extract SOL transfer details
+  nativeTransfers.forEach((transfer) => {
+    txDetails.solTransfers.push({
+      from: transfer.fromUserAccount,
+      to: transfer.toUserAccount,
+      amount: transfer.amount / 1e9, // Convert lamports to SOL
+    });
+  });
+
+  return txDetails;
+}
+
 // Main function with pagination
 async function findTokenBuys() {
   console.log(chalk.blue("Fetching wallet transactions..."));
@@ -83,10 +116,12 @@ async function findTokenBuys() {
       }
 
       const tokenBuys = filterTokenBuys([tx], walletAddress, targetMintAddress);
-      allTokenBuys = allTokenBuys.concat(tokenBuys);
-
       if (tokenBuys.length > 0) {
-        console.log(chalk.green(`🔍 Found ${tokenBuys.length} token buys in this transaction.`));
+        tokenBuys.forEach((buyTx) => {
+          const details = extractBuyDetails(buyTx);
+          console.log(chalk.green(`🔍 Found token buy: ${JSON.stringify(details, null, 2)}`));
+          allTokenBuys.push(details);
+        });
       }
     }
 
@@ -99,8 +134,12 @@ async function findTokenBuys() {
     }
   }
 
-  console.log(chalk.greenBright(`✅ Found ${allTokenBuys.length} total token buys:`));
-  console.log(JSON.stringify(allTokenBuys, null, 2)); // Pretty-print the buys
+  console.log(chalk.greenBright(`✅ Found ${allTokenBuys.length} total token buys.`));
+
+  // Save to JSON file
+  const outputFile = "token_buys.json";
+  fs.writeFileSync(outputFile, JSON.stringify(allTokenBuys, null, 2));
+  console.log(chalk.blueBright(`💾 Token buys saved to ${outputFile}`));
 }
 
 // Execute
