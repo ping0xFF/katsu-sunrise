@@ -7,9 +7,8 @@ const API_KEY = process.env.HELIUS_API_KEY; // Your Helius API key
 const walletAddress = "HUpPyLU8KWisCAr3mzWy2FKT6uuxQ2qGgJQxyTpDoes5"; // Replace with your wallet address
 const targetMintAddress = "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"; // Replace with your token mint address
 const date = new Date('2025-01-03T00:02:00Z');  // rough date of token creation
-console.log(date.getTime());
-tokenCreationTimestamp = date.getTime();
-//const tokenCreationTimestamp = 1672608000000; // Replace with the hardcoded timestamp (e.g., January 1, 2023, in milliseconds)
+console.log(`Token creation timestamp: ${date.getTime()}`);
+const tokenCreationTimestamp = date.getTime();
 
 if (!API_KEY) {
   console.error("Error: Helius API key is not defined in the .env file.");
@@ -23,6 +22,7 @@ async function getWalletTransactions(wallet, before = null) {
     if (before) {
       url += `&before=${before}`;
     }
+    console.log(`Fetching transactions with URL: ${url}`);
     const response = await axios.get(url);
     console.log(`Fetched ${response.data.length} transactions.`);
     return response.data;
@@ -35,13 +35,17 @@ async function getWalletTransactions(wallet, before = null) {
 // Filter for buys of the specific token
 function filterTokenBuys(transactions, wallet, mintAddress) {
   return transactions.filter((tx) => {
-    return tx.tokenTransfers.some((transfer) => {
+    const matches = tx.tokenTransfers.some((transfer) => {
       return (
         transfer.mint === mintAddress &&
         transfer.toUserAccount === wallet &&
         transfer.tokenAmount > 0
       );
     });
+    if (matches) {
+      console.log(`Transaction matches: ${tx.signature}`);
+    }
+    return matches;
   });
 }
 
@@ -56,6 +60,7 @@ async function findTokenBuys() {
     const transactions = await getWalletTransactions(walletAddress, before);
 
     if (transactions.length === 0) {
+      console.log("No more transactions fetched. Stopping pagination.");
       hasMore = false;
       break;
     }
@@ -65,14 +70,22 @@ async function findTokenBuys() {
     allTokenBuys = allTokenBuys.concat(tokenBuys);
 
     // Check if any transaction is older than the token creation date
-    const oldestTransactionDate = new Date(transactions[transactions.length - 1]?.blockTime * 1000);
-    if (oldestTransactionDate.getTime() < tokenCreationTimestamp) {
-      console.log("Reached transactions older than token creation date. Stopping.");
+    const lastTransaction = transactions[transactions.length - 1];
+    if (lastTransaction?.blockTime) {
+      const oldestTransactionDate = new Date(lastTransaction.blockTime * 1000);
+      console.log(`Oldest transaction block time: ${oldestTransactionDate.toISOString()}`);
+      if (oldestTransactionDate.getTime() < tokenCreationTimestamp) {
+        console.log("Reached transactions older than token creation date. Stopping.");
+        break;
+      }
+    } else {
+      console.warn("Last transaction blockTime is invalid or missing. Stopping.");
       break;
     }
 
     // Update the `before` parameter for pagination
-    before = transactions[transactions.length - 1]?.signature;
+    before = lastTransaction?.signature;
+    console.log(`Updated 'before' parameter for pagination: ${before}`);
 
     console.log(`Total token buys found so far: ${allTokenBuys.length}`);
   }
