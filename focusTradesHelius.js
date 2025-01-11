@@ -1,5 +1,6 @@
-require("dotenv").config();
-const axios = require("axios");
+import "dotenv/config";
+import axios from "axios";
+import chalk from "chalk";
 
 // Configuration
 const HELIUS_API_URL = process.env.HELIUS_API_URL;
@@ -12,7 +13,7 @@ const tokenCreationDate = "2025-01-02T12:00:00Z"; // Replace with your token cre
 const tokenCreationTimestamp = new Date(tokenCreationDate).getTime(); // Convert to milliseconds
 
 if (!API_KEY) {
-  console.error("Error: Helius API key is not defined in the .env file.");
+  console.error(chalk.red("Error: Helius API key is not defined in the .env file."));
   process.exit(1);
 }
 
@@ -24,10 +25,10 @@ async function getWalletTransactions(wallet, before = null) {
       url += `&before=${before}`;
     }
     const response = await axios.get(url);
-    console.log(`Fetched ${response.data.length} transactions.`);
+    console.log(chalk.green(`Fetched ${response.data.length} transactions.`));
     return response.data;
   } catch (error) {
-    console.error("Error fetching transactions:", error.response?.data || error.message);
+    console.error(chalk.red("Error fetching transactions:"), error.response?.data || error.message);
     return [];
   }
 }
@@ -47,8 +48,10 @@ function filterTokenBuys(transactions, wallet, mintAddress) {
 
 // Main function with pagination
 async function findTokenBuys() {
-  console.log("Fetching wallet transactions...");
-  console.log(`Token creation timestamp: ${tokenCreationTimestamp} (${tokenCreationDate})`);
+  console.log(chalk.blue("Fetching wallet transactions..."));
+  console.log(
+    chalk.cyanBright(`Token creation timestamp: ${tokenCreationTimestamp} (${tokenCreationDate})`)
+  );
   let before = null;
   let hasMore = true;
   let allTokenBuys = [];
@@ -61,20 +64,20 @@ async function findTokenBuys() {
       break;
     }
 
-    console.log("Filtering for token buys...");
+    console.log(chalk.yellow("Filtering for token buys..."));
     for (const tx of transactions) {
       const txTimestampMs = tx.timestamp * 1000; // Convert to milliseconds
+      const comparison = txTimestampMs >= tokenCreationTimestamp ? chalk.green("✔") : chalk.red("✘");
       console.log(
-        `Current transaction timestamp: ${txTimestampMs} (${new Date(txTimestampMs).toISOString()})`
-      );
-      console.log(
-        `Comparison: Token creation timestamp (${tokenCreationTimestamp}) ${
-          txTimestampMs >= tokenCreationTimestamp ? "<=" : ">"
-        } Current transaction timestamp (${txTimestampMs})`
+        `${chalk.magenta("TxID:")} ${tx.signature} | ${chalk.blue("TxTS:")} ${new Date(
+          txTimestampMs
+        ).toISOString()} | ${chalk.green("CreationTS:")} ${new Date(
+          tokenCreationTimestamp
+        ).toISOString()} ${comparison}`
       );
 
       if (txTimestampMs < tokenCreationTimestamp) {
-        console.log("Transaction is before the token creation timestamp. Stopping.");
+        console.log(chalk.red("Transaction is before the token creation timestamp. Stopping."));
         hasMore = false;
         break;
       }
@@ -83,20 +86,20 @@ async function findTokenBuys() {
       allTokenBuys = allTokenBuys.concat(tokenBuys);
 
       if (tokenBuys.length > 0) {
-        console.log(`🔍 Found ${tokenBuys.length} token buys in this transaction.`);
+        console.log(chalk.green(`🔍 Found ${tokenBuys.length} token buys in this transaction.`));
       }
     }
 
-    console.log(`Total token buys found so far: ${allTokenBuys.length}`);
+    console.log(chalk.greenBright(`Total token buys found so far: ${allTokenBuys.length}`));
 
     // Update the `before` parameter for pagination
     if (hasMore) {
       before = transactions[transactions.length - 1]?.signature;
-      console.log(`Updated 'before' parameter for pagination: ${before}`);
+      console.log(chalk.blue(`Updated 'before' parameter for pagination: ${before}`));
     }
   }
 
-  console.log(`✅ Found ${allTokenBuys.length} total token buys:`);
+  console.log(chalk.greenBright(`✅ Found ${allTokenBuys.length} total token buys:`));
   console.log(JSON.stringify(allTokenBuys, null, 2)); // Pretty-print the buys
 }
 
