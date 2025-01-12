@@ -33,65 +33,66 @@ async function getMintTransactions(mintAddress, before = null) {
   }
 }
 
-// Find surrounding trades for a given focus trade
 async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignature) {
   // Define the start and end of the surrounding time range
-  const startTimestamp = mainTxTimestamp - surroundingTimeRangeMs;
-  const endTimestamp = mainTxTimestamp;
+  const startTimestamp = mainTxTimestamp - surroundingTimeRangeMs; // Start time for the range
+  const endTimestamp = mainTxTimestamp; // End time for the range
 
-  let before = null; // For pagination
-  let surroundingTrades = []; // Array to store surrounding trades
-  let hasMore = true; // Flag to continue or stop pagination
+  let before = null; // Pagination parameter for API calls
+  let surroundingTrades = []; // To collect all valid surrounding trades
+  let hasMore = true; // To control pagination loop
 
   while (hasMore) {
     console.log(chalk.yellow(`Fetching transactions for mint: ${mintAddress}...`));
 
-    // Fetch transactions for the mint address
+    // Fetch transactions using the mint address
     const transactions = await getMintTransactions(mintAddress, before);
 
+    // **CHECKPOINT 1: Pagination control**
     if (!transactions || transactions.length === 0) {
       console.log(chalk.red("No transactions found. Ending pagination."));
-      hasMore = false;
+      hasMore = false; // **Ensure pagination stops on empty response**
       break;
     }
 
     console.log(chalk.green(`Fetched ${transactions.length} transactions.`));
 
+    // Iterate through each transaction
     for (const tx of transactions) {
       const txTimestampMs = tx.timestamp * 1000; // Convert timestamp to milliseconds
 
-      // Stop if the transaction is outside the time window
+      // **CHECKPOINT 2: Time range filter**
       if (txTimestampMs < startTimestamp) {
         console.log(chalk.red("Transaction is outside the time range. Stopping pagination."));
-        hasMore = false;
+        hasMore = false; // **Stop pagination if the transaction is too old**
         break;
       }
 
-      // Add to surrounding trades if within the window and not the focus trade
+      // **CHECKPOINT 3: Exclude main transaction**
       if (txTimestampMs <= endTimestamp && tx.signature !== mainTxSignature) {
         tx.tokenTransfers.forEach((transfer) => {
-          // Only consider transfers for the specified mint address
+          // **CHECKPOINT 4: Mint address filter**
           if (transfer.mint === mintAddress) {
             surroundingTrades.push({
-              wallet: transfer.toUserAccount, // Wallet involved in the transfer
+              wallet: transfer.toUserAccount, // The wallet receiving the token
               signature: tx.signature, // Transaction signature
-              amount: transfer.tokenAmount, // Amount transferred
-              date: new Date(txTimestampMs).toISOString(), // Timestamp in ISO format
+              amount: transfer.tokenAmount, // Amount of tokens transferred
+              date: new Date(txTimestampMs).toISOString(), // Date in ISO format
             });
           }
         });
       }
     }
 
-    // Set `before` for the next page
+    // **CHECKPOINT 5: Update `before` for pagination**
     before = transactions[transactions.length - 1]?.signature;
     if (!before) {
-      hasMore = false; // Stop if there are no more transactions to paginate
       console.log(chalk.red("No 'before' parameter available. Ending pagination."));
+      hasMore = false; // **Stop pagination if `before` is not available**
     }
   }
 
-  return surroundingTrades;
+  return surroundingTrades; // Return all surrounding trades found
 }
 
 async function processSurroundingTrades() {
