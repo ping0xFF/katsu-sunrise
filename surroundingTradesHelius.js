@@ -93,7 +93,6 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
   return surroundingTrades;
 }
 
-// Main function
 async function processSurroundingTrades() {
   // Load token buys from JSON
   let tokenBuys = JSON.parse(fs.readFileSync(inputFile, "utf8"));
@@ -109,11 +108,20 @@ async function processSurroundingTrades() {
     delete buy.surroundingTrades;
 
     const mainTxTimestamp = new Date(buy.date).getTime();
-    const mintAddress = buy.tokenTransfers[0]?.mint;
 
-    // Ensure mintAddress exists
-    if (!mintAddress) {
-      console.error(chalk.red(`No mint address found for TxID: ${buy.signature}. Skipping.`));
+    // Ensure the correct mint address is used
+    const targetMintAddress = "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump";
+
+    const relevantTransfer = buy.tokenTransfers.find(
+      (transfer) => transfer.mint === targetMintAddress
+    );
+
+    const mintAddress = relevantTransfer?.mint;
+    const walletAddress = relevantTransfer?.to;
+
+    // Ensure mintAddress and walletAddress exist
+    if (!mintAddress || !walletAddress) {
+      console.error(chalk.red(`No valid mint or wallet address found for TxID: ${buy.signature}. Skipping.`));
       continue;
     }
 
