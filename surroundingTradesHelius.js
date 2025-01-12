@@ -1,28 +1,26 @@
-import "dotenv/config"; // Load environment variables from a .env file
-import axios from "axios"; // HTTP client for API requests
-import fs from "fs"; // File system module for reading/writing files
-import chalk from "chalk"; // For color-coded console output
+import "dotenv/config";
+import axios from "axios";
+import fs from "fs";
+import chalk from "chalk";
 
 // Configuration
-const HELIUS_API_URL = process.env.HELIUS_API_URL; // Base URL for the Helius API
-const API_KEY = process.env.HELIUS_API_KEY; // API key for authentication
-const surroundingTimeRangeMs = 5 * 60 * 1000; // Time range for surrounding trades (5 minutes in milliseconds)
-const inputFile = "token_buys.json"; // Input file containing token buy transactions
-const outputFile = "token_buys_with_surrounding.json"; // Output file for enriched data
+const HELIUS_API_URL = process.env.HELIUS_API_URL;
+const API_KEY = process.env.HELIUS_API_KEY; // Your Helius API key
+const surroundingTimeRangeMs = 5 * 60 * 1000; // 5 minutes in milliseconds
+const inputFile = "token_buys.json";
+const outputFile = "token_buys_with_surrounding.json";
 
-// Ensure the API key is set
 if (!API_KEY) {
   console.error(chalk.red("Error: Helius API key is not defined in the .env file."));
   process.exit(1);
 }
 
-// Function to fetch transaction history for a given address or mint
-async function getWalletTransactions(wallet, before = null) {
+// Function to fetch transaction history for a mint
+async function getMintTransactions(mintAddress, before = null) {
   try {
-    // Build the URL with optional pagination
-    let url = `${HELIUS_API_URL}/v0/addresses/${wallet}/transactions?api-key=${API_KEY}`;
+    let url = `${HELIUS_API_URL}/v0/tokens/${mintAddress}/transactions?api-key=${API_KEY}`;
     if (before) {
-      url += `&before=${before}`; // Add pagination parameter if provided
+      url += `&before=${before}`;
     }
 
     // Fetch transactions from the API
@@ -30,11 +28,11 @@ async function getWalletTransactions(wallet, before = null) {
     return response.data; // Return the list of transactions
   } catch (error) {
     console.error(chalk.red("Error fetching transactions:"), error.response?.data || error.message);
-    return []; // Return an empty array on error
+    return [];
   }
 }
 
-// Function to find trades surrounding a specific transaction
+// Find surrounding trades for a given focus trade
 async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignature) {
   // Define the start and end of the surrounding time range
   const startTimestamp = mainTxTimestamp - surroundingTimeRangeMs;
@@ -47,8 +45,8 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
   while (hasMore) {
     console.log(chalk.yellow(`Fetching transactions for mint: ${mintAddress}...`));
 
-    // Fetch transactions for the given mint address
-    const transactions = await getWalletTransactions(mintAddress, before);
+    // Fetch transactions for the mint address
+    const transactions = await getMintTransactions(mintAddress, before);
 
     if (!transactions || transactions.length === 0) {
       console.log(chalk.red("No transactions found. Ending pagination."));
@@ -61,14 +59,14 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
     for (const tx of transactions) {
       const txTimestampMs = tx.timestamp * 1000; // Convert timestamp to milliseconds
 
-      // If the transaction is outside the time range, stop pagination
+      // Stop if the transaction is outside the time window
       if (txTimestampMs < startTimestamp) {
         console.log(chalk.red("Transaction is outside the time range. Stopping pagination."));
         hasMore = false;
         break;
       }
 
-      // If within the time range and not the main transaction, process it
+      // Add to surrounding trades if within the window and not the focus trade
       if (txTimestampMs <= endTimestamp && tx.signature !== mainTxSignature) {
         tx.tokenTransfers.forEach((transfer) => {
           // Only consider transfers for the specified mint address
@@ -84,7 +82,7 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
       }
     }
 
-    // Update the `before` parameter for pagination
+    // Set `before` for the next page
     before = transactions[transactions.length - 1]?.signature;
     if (!before) {
       hasMore = false; // Stop if there are no more transactions to paginate
@@ -92,12 +90,12 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
     }
   }
 
-  return surroundingTrades; // Return the collected surrounding trades
+  return surroundingTrades;
 }
 
-// Main function to process surrounding trades for token buys
+// Main function
 async function processSurroundingTrades() {
-  // Load the input JSON file
+  // Load token buys from JSON
   let tokenBuys = JSON.parse(fs.readFileSync(inputFile, "utf8"));
   console.log(chalk.blue(`Processing ${tokenBuys.length} token buys from ${inputFile}...`));
 
@@ -107,27 +105,35 @@ async function processSurroundingTrades() {
 
     console.log(chalk.yellow(`Finding surrounding trades for TxID: ${buy.signature}...`));
 
-    // Remove any existing surroundingTrades from the JSON
+    // Remove existing surroundingTrades if present
     delete buy.surroundingTrades;
 
-    const mainTxTimestamp = new Date(buy.date).getTime(); // Timestamp of the main transaction
-    const surroundingTrades = await findSurroundingTrades(
-      buy.tokenTransfers[0]?.to, // Use the recipient's wallet address
-      mainTxTimestamp, // Timestamp of the main transaction
-      buy.signature // Signature of the main transaction
-    );
+    const mainTxTimestamp = new Date(buy.date).getTime();
+    const mintAddress = buy.tokenTransfers[0]?.mint;
 
-    buy.surroundingTrades = surroundingTrades; // Add surrounding trades to the token buy
+    // Ensure mintAddress exists
+    if (!mintAddress) {
+      console.error(chalk.red(`No mint address found for TxID: ${buy.signature}. Skipping.`));
+      continue;
+    }
+
+    // Fetch surrounding trades
+    const surroundingTrades = await findSurroundingTrades(mintAddress, mainTxTimestamp, buy.signature);
+
+    // Add surrounding trades to the focus trade
+    buy.surroundingTrades = surroundingTrades;
 
     console.log(
-      chalk.green(`Found ${surroundingTrades.length} surrounding trades for TxID: ${buy.signature}`)
+      chalk.green(
+        `Found ${surroundingTrades.length} surrounding trades for TxID: ${buy.signature}`
+      )
     );
   }
 
-  // Save the updated JSON to the output file
+  // Save updated JSON with surrounding trades
   fs.writeFileSync(outputFile, JSON.stringify(tokenBuys, null, 2));
   console.log(chalk.blueBright(`💾 Updated token buys saved to ${outputFile}`));
 }
 
-// Execute the main function
+// Execute the script
 processSurroundingTrades();
