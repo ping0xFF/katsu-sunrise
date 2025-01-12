@@ -15,10 +15,11 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// Function to fetch transaction history for a mint
+// Function to fetch transaction history for a mint (address-based endpoint)
 async function getMintTransactions(mintAddress, before = null) {
   try {
-    let url = `${HELIUS_API_URL}/v0/tokens/${mintAddress}/transactions?api-key=${API_KEY}`;
+    // Construct URL matching the working `curl` command
+    let url = `${HELIUS_API_URL}/v0/addresses/${mintAddress}/transactions?api-key=${API_KEY}`;
     if (before) {
       url += `&before=${before}`;
     }
@@ -50,7 +51,7 @@ async function findSurroundingTrades(mintAddress, mainTxTimestamp, mainTxSignatu
 
     if (!transactions || transactions.length === 0) {
       console.log(chalk.red("No transactions found. Ending pagination."));
-      hasMore = false; // Stop if no transactions are returned
+      hasMore = false;
       break;
     }
 
@@ -117,28 +118,21 @@ async function processSurroundingTrades() {
     );
 
     const mintAddress = relevantTransfer?.mint;
-    const walletAddress = relevantTransfer?.to;
 
-    // Ensure mintAddress and walletAddress exist
-    if (!mintAddress || !walletAddress) {
-      console.error(chalk.red(`No valid mint or wallet address found for TxID: ${buy.signature}. Skipping.`));
+    if (!mintAddress) {
+      console.error(chalk.red(`No valid mint address found for TxID: ${buy.signature}. Skipping.`));
       continue;
     }
 
-    // Fetch surrounding trades
     const surroundingTrades = await findSurroundingTrades(mintAddress, mainTxTimestamp, buy.signature);
 
-    // Add surrounding trades to the focus trade
     buy.surroundingTrades = surroundingTrades;
 
     console.log(
-      chalk.green(
-        `Found ${surroundingTrades.length} surrounding trades for TxID: ${buy.signature}`
-      )
+      chalk.green(`Found ${surroundingTrades.length} surrounding trades for TxID: ${buy.signature}`)
     );
   }
 
-  // Save updated JSON with surrounding trades
   fs.writeFileSync(outputFile, JSON.stringify(tokenBuys, null, 2));
   console.log(chalk.blueBright(`💾 Updated token buys saved to ${outputFile}`));
 }
