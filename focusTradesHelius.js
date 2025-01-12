@@ -53,6 +53,7 @@ function extractBuyDetails(transaction) {
   const txDetails = {
     signature,
     date: new Date(timestamp * 1000).toISOString(),
+    mint: targetMintAddress, // Include the token address
     tokenTransfers: [],
     solTransfers: [],
   };
