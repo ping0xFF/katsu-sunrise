@@ -5,7 +5,7 @@ import chalk from "chalk";
 
 // Configuration
 const HELIUS_API_URL = process.env.HELIUS_API_URL;
-const API_KEY = process.env.HELIUS_API_KEY; // Your Helius API key
+const API_KEY = process.env.HELIUS_API_KEY;
 const surroundingTimeRangeMs = 5 * 60 * 1000; // 5 minutes in milliseconds
 const inputFile = "token_buys.json";
 const outputFile = "token_buys_with_surrounding.json";
@@ -15,15 +15,11 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-// Function to fetch transaction history
+// Fetch transaction history
 async function getTransactions(address, before = null) {
   try {
-    // Construct the API URL with the address and optional 'before' parameter
     let url = `${HELIUS_API_URL}/v0/addresses/${address}/transactions?api-key=${API_KEY}`;
-    if (before) {
-      url += `&before=${before}`;
-    }
-
+    if (before) url += `&before=${before}`;
     const response = await axios.get(url);
     return response.data;
   } catch (error) {
@@ -32,26 +28,19 @@ async function getTransactions(address, before = null) {
   }
 }
 
-// Function to find surrounding trades for a specific token pair
+// Find trades before the focus transaction
 async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSignature) {
   const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
-
-  let before = focusTxSignature; // Start with the focus transaction signature
+  let before = focusTxSignature;
   let surroundingTrades = [];
   let hasMore = true;
 
   while (hasMore) {
-    console.log(
-      chalk.yellow(`Fetching transactions for pair: ${pairAddress}`) +
-        chalk.blue(` | Time Window: Start - ${new Date(startTimestamp).toISOString()}`) +
-        chalk.magenta(` | Current 'before': ${before || "null"}`)
-    );
-
-    // Fetch transactions, passing the `before` parameter
+    console.log(chalk.yellow(`Fetching transactions before: ${before}`));
     const transactions = await getTransactions(pairAddress, before);
 
     if (!transactions || transactions.length === 0) {
-      console.log(chalk.red("No transactions found. Ending pagination."));
+      console.log(chalk.red("No more transactions. Stopping pagination."));
       hasMore = false;
       break;
     }
@@ -60,20 +49,23 @@ async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSigna
 
     for (const tx of transactions) {
       const txTimestampMs = tx.timestamp * 1000;
+      const isWithinWindow = txTimestampMs >= startTimestamp;
 
+      const symbol = isWithinWindow ? chalk.green("✅") : chalk.red("❌");
       console.log(
-        chalk.cyan(`Processing TxID: ${tx.signature}`) +
-          chalk.blue(` | Timestamp: ${new Date(txTimestampMs).toISOString()}`)
+        `${symbol} TxID: ${tx.signature}` +
+          ` | Tx Time: ${new Date(txTimestampMs).toISOString().slice(11, 19)}` +
+          ` | Start Window: ${new Date(startTimestamp).toISOString().slice(11, 19)}`
       );
 
-      // Stop if the transaction timestamp is before the start of the time window
-      if (txTimestampMs < startTimestamp) {
-        console.log(chalk.red("Transaction is outside the time range. Stopping pagination."));
+      // If it's outside the window, stop pagination
+      if (!isWithinWindow) {
+        console.log(chalk.red("Transaction is outside the time window. Stopping pagination."));
         hasMore = false;
         break;
       }
 
-      // If the transaction is within the time window and not the focus transaction, add it to the results
+      // Add to results if not the focus transaction
       if (tx.signature !== focusTxSignature) {
         tx.tokenTransfers.forEach((transfer) => {
           if (transfer.mint === pairAddress) {
@@ -88,32 +80,30 @@ async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSigna
       }
     }
 
-    // Update `before` to the signature of the last transaction
+    // Update pagination
     const previousBefore = before;
     before = transactions[transactions.length - 1]?.signature;
 
-    if (!before || previousBefore === before) {
-      console.log(chalk.red("No valid or new 'before' parameter available. Ending pagination."));
+    if (!before || before === previousBefore) {
+      console.log(chalk.red("No valid 'before' parameter. Ending pagination."));
       hasMore = false;
-    } else {
-      console.log(chalk.magenta(`Next 'before' parameter set: ${before}`));
     }
   }
 
   return surroundingTrades;
 }
 
+// Process surrounding trades for each focus transaction
 async function processSurroundingTrades() {
   const tokenBuys = JSON.parse(fs.readFileSync(inputFile, "utf8"));
-  console.log(chalk.blue(`Processing ${tokenBuys.length} token buys from ${inputFile}...`));
+  console.log(chalk.blue(`Processing ${tokenBuys.length} focus transactions...\n`));
 
   for (let i = 0; i < tokenBuys.length; i++) {
     const buy = tokenBuys[i];
     const focusTxTimestamp = new Date(buy.date).getTime();
 
     console.log(
-      chalk.yellow(`Finding surrounding trades for TxID: ${buy.signature}...`) +
-        chalk.blue(` | Time Window: Start - ${new Date(focusTxTimestamp - surroundingTimeRangeMs).toISOString()}`)
+      chalk.yellow(`Focus TxID: ${buy.signature} | Focus Time: ${new Date(focusTxTimestamp).toISOString()}`)
     );
 
     delete buy.surroundingTrades;
@@ -124,13 +114,11 @@ async function processSurroundingTrades() {
 
     buy.surroundingTrades = surroundingTrades;
 
-    console.log(
-      chalk.green(`Found ${surroundingTrades.length} surrounding trades for TxID: ${buy.signature}`)
-    );
+    console.log(chalk.green(`Found ${surroundingTrades.length} trades for focus TxID: ${buy.signature}\n`));
   }
 
   fs.writeFileSync(outputFile, JSON.stringify(tokenBuys, null, 2));
-  console.log(chalk.blueBright(`💾 Updated token buys saved to ${outputFile}`));
+  console.log(chalk.blueBright(`💾 Results saved to ${outputFile}`));
 }
 
 processSurroundingTrades();
