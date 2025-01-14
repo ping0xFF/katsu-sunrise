@@ -7,6 +7,7 @@ import chalk from "chalk";
 const HELIUS_API_URL = process.env.HELIUS_API_URL;
 const API_KEY = process.env.HELIUS_API_KEY;
 const surroundingTimeRangeMs = 5 * 60 * 1000; // 5 minutes in milliseconds
+const pairAddress = "J2p6tgZDkvtHQ3VfbGRjzHJNLrqFgGfvjJsp2K7HX5cH"; // Token pair address
 const inputFile = "token_buys.json";
 const outputFile = "token_buys_with_surrounding.json";
 
@@ -29,14 +30,14 @@ async function getTransactions(address, before = null) {
 }
 
 // Find trades before the focus transaction
-async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSignature) {
+async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
   const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
   let before = focusTxSignature;
   let surroundingTrades = [];
   let hasMore = true;
 
   while (hasMore) {
-    console.log(chalk.yellow(`Fetching transactions before: ${before}`));
+    console.log(chalk.cyan(`Fetching transactions before: ${before}`));
     const transactions = await getTransactions(pairAddress, before);
 
     if (!transactions || transactions.length === 0) {
@@ -50,12 +51,10 @@ async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSigna
     for (const tx of transactions) {
       const txTimestampMs = tx.timestamp * 1000;
       const isWithinWindow = txTimestampMs >= startTimestamp;
-
       const symbol = isWithinWindow ? chalk.green("✅") : chalk.red("❌");
+
       console.log(
-        `${symbol} TxID: ${tx.signature}` +
-          ` | Tx Time: ${new Date(txTimestampMs).toISOString().slice(11, 19)}` +
-          ` | Start Window: ${new Date(startTimestamp).toISOString().slice(11, 19)}`
+        `${symbol} TxID: ${chalk.yellow(tx.signature)} | Tx: ${chalk.blue(new Date(txTimestampMs).toISOString().slice(11, 19))} | S: ${chalk.green(new Date(startTimestamp).toISOString().slice(11, 19))}`
       );
 
       // If it's outside the window, stop pagination
@@ -103,14 +102,12 @@ async function processSurroundingTrades() {
     const focusTxTimestamp = new Date(buy.date).getTime();
 
     console.log(
-      chalk.yellow(`Focus TxID: ${buy.signature} | Focus Time: ${new Date(focusTxTimestamp).toISOString()}`)
+      chalk.yellow(`Focus TxID: ${buy.signature} | Focus Tx: ${new Date(focusTxTimestamp).toISOString()}`)
     );
 
     delete buy.surroundingTrades;
 
-    const pairAddress = "J2p6tgZDkvtHQ3VfbGRjzHJNLrqFgGfvjJsp2K7HX5cH";
-
-    const surroundingTrades = await findSurroundingTrades(pairAddress, focusTxTimestamp, buy.signature);
+    const surroundingTrades = await findSurroundingTrades(focusTxTimestamp, buy.signature);
 
     buy.surroundingTrades = surroundingTrades;
 
