@@ -32,11 +32,11 @@ async function getTransactions(address, before = null) {
   }
 }
 
-async function findSurroundingTrades(pairAddress, mainTxTimestamp, mainTxSignature) {
-  const startTimestamp = mainTxTimestamp - surroundingTimeRangeMs;
-  const endTimestamp = mainTxTimestamp + surroundingTimeRangeMs;
+// Function to find surrounding trades for a specific token pair
+async function findSurroundingTrades(pairAddress, focusTxTimestamp, focusTxSignature) {
+  const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
 
-  let before = mainTxSignature; // Start with the main transaction signature
+  let before = focusTxSignature; // Start with the focus transaction signature
   let surroundingTrades = [];
   let hasMore = true;
 
@@ -44,7 +44,6 @@ async function findSurroundingTrades(pairAddress, mainTxTimestamp, mainTxSignatu
     console.log(
       chalk.yellow(`Fetching transactions for pair: ${pairAddress}`) +
         chalk.blue(` | Time Window: Start - ${new Date(startTimestamp).toISOString()}`) +
-        chalk.green(` | End - ${new Date(endTimestamp).toISOString()}`) +
         chalk.magenta(` | Current 'before': ${before || "null"}`)
     );
 
@@ -67,15 +66,15 @@ async function findSurroundingTrades(pairAddress, mainTxTimestamp, mainTxSignatu
           chalk.blue(` | Timestamp: ${new Date(txTimestampMs).toISOString()}`)
       );
 
-      // Stop if the transaction timestamp is before the time window
+      // Stop if the transaction timestamp is before the start of the time window
       if (txTimestampMs < startTimestamp) {
         console.log(chalk.red("Transaction is outside the time range. Stopping pagination."));
         hasMore = false;
         break;
       }
 
-      // If the transaction is within the time window, add it to the results
-      if (txTimestampMs <= endTimestamp && tx.signature !== mainTxSignature) {
+      // If the transaction is within the time window and not the focus transaction, add it to the results
+      if (tx.signature !== focusTxSignature) {
         tx.tokenTransfers.forEach((transfer) => {
           if (transfer.mint === pairAddress) {
             surroundingTrades.push({
@@ -110,19 +109,18 @@ async function processSurroundingTrades() {
 
   for (let i = 0; i < tokenBuys.length; i++) {
     const buy = tokenBuys[i];
-    const mainTxTimestamp = new Date(buy.date).getTime();
+    const focusTxTimestamp = new Date(buy.date).getTime();
 
     console.log(
       chalk.yellow(`Finding surrounding trades for TxID: ${buy.signature}...`) +
-        chalk.blue(` | Time Window: Start - ${new Date(mainTxTimestamp - surroundingTimeRangeMs).toISOString()}`) +
-        chalk.green(` | End - ${new Date(mainTxTimestamp + surroundingTimeRangeMs).toISOString()}`)
+        chalk.blue(` | Time Window: Start - ${new Date(focusTxTimestamp - surroundingTimeRangeMs).toISOString()}`)
     );
 
     delete buy.surroundingTrades;
 
     const pairAddress = "J2p6tgZDkvtHQ3VfbGRjzHJNLrqFgGfvjJsp2K7HX5cH";
 
-    const surroundingTrades = await findSurroundingTrades(pairAddress, mainTxTimestamp, buy.signature);
+    const surroundingTrades = await findSurroundingTrades(pairAddress, focusTxTimestamp, buy.signature);
 
     buy.surroundingTrades = surroundingTrades;
 
