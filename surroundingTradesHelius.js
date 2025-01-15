@@ -1,3 +1,11 @@
+// Current Behavior of the Helius API
+// 	1.	Batch Query:
+// 	•	You can fetch a list of up to 50 transaction summaries at once using the before parameter.
+// 	•	These summaries include information like transaction signature, timestamp, and slot, but not detailed tokenTransfers or other enriched fields.
+// 	2.	Detail Query:
+// 	•	For each transaction in the batch, you must make a separate query to fetch its detailed information, such as token transfers and balance changes.
+
+
 import "dotenv/config";
 import axios from "axios";
 import fs from "fs";
