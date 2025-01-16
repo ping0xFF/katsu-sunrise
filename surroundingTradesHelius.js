@@ -1,11 +1,3 @@
-// Current Behavior of the Helius API
-// 	1.	Batch Query:
-// 	•	You can fetch a list of up to 50 transaction summaries at once using the before parameter.
-// 	•	These summaries include information like transaction signature, timestamp, and slot, but not detailed tokenTransfers or other enriched fields.
-// 	2.	Detail Query:
-// 	•	For each transaction in the batch, you must make a separate query to fetch its detailed information, such as token transfers and balance changes.
-
-
 import "dotenv/config";
 import axios from "axios";
 import fs from "fs";
@@ -30,6 +22,7 @@ async function getTransactions(address, before = null) {
     let url = `${HELIUS_API_URL}/v0/addresses/${address}/transactions?api-key=${API_KEY}`;
     if (before) url += `&before=${before}`;
     const response = await axios.get(url);
+    console.log(chalk.green(`Fetched ${response.data.length} transactions.`));
     return response.data;
   } catch (error) {
     console.error(chalk.red("Error fetching transactions:"), error.response?.data || error.message);
@@ -42,6 +35,7 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
   const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
   let before = focusTxSignature;
   let surroundingTrades = [];
+  let seenTransactions = new Set(); // To track unique transactions
   let hasMore = true;
 
   while (hasMore) {
@@ -54,45 +48,41 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
       break;
     }
 
-    console.log(chalk.green(`Fetched ${transactions.length} transactions.`));
-
     for (const tx of transactions) {
+      if (seenTransactions.has(tx.signature)) {
+        console.log(chalk.yellow(`Duplicate TxID skipped: ${tx.signature}`));
+        continue;
+      }
+
+      seenTransactions.add(tx.signature);
+
       const txTimestampMs = tx.timestamp * 1000;
       const isWithinWindow = txTimestampMs >= startTimestamp;
-      const symbol = isWithinWindow ? chalk.green("✅") : chalk.red("❌");
 
       console.log(
-        `${symbol} TxID: ${chalk.yellow(tx.signature)} | Tx: ${chalk.blue(new Date(txTimestampMs).toISOString().slice(11, 19))} | S: ${chalk.green(new Date(startTimestamp).toISOString().slice(11, 19))}`
+        `${isWithinWindow ? chalk.green("✅") : chalk.red("❌")} TxID: ${chalk.yellow(tx.signature)} | TS: ${new Date(txTimestampMs).toISOString()}`
       );
 
-      // If it's outside the window, stop pagination
       if (!isWithinWindow) {
         console.log(chalk.red("Transaction is outside the time window. Stopping pagination."));
         hasMore = false;
         break;
       }
 
-      // Add to results if not the focus transaction
-      if (tx.signature !== focusTxSignature) {
-        tx.tokenTransfers.forEach((transfer) => {
-          if (transfer.mint === pairAddress) {
-            surroundingTrades.push({
-              wallet: transfer.toUserAccount,
-              signature: tx.signature,
-              amount: transfer.tokenAmount,
-              date: new Date(txTimestampMs).toISOString(),
-            });
-          }
-        });
-      }
+      surroundingTrades.push({
+        signature: tx.signature,
+        timestamp: txTimestampMs, // Explicitly include the timestamp
+        details: { ...tx }, // Include full transaction details
+      });
     }
 
     // Update pagination
     const previousBefore = before;
     before = transactions[transactions.length - 1]?.signature;
 
+    // Prevent infinite loops by ensuring the `before` value changes
     if (!before || before === previousBefore) {
-      console.log(chalk.red("No valid 'before' parameter. Ending pagination."));
+      console.log(chalk.red("No valid 'before' parameter or duplicate batch detected. Ending pagination."));
       hasMore = false;
     }
   }
@@ -110,10 +100,8 @@ async function processSurroundingTrades() {
     const focusTxTimestamp = new Date(buy.date).getTime();
 
     console.log(
-      chalk.yellow(`Focus TxID: ${buy.signature} | Focus Tx: ${new Date(focusTxTimestamp).toISOString()}`)
+      chalk.blueBright(`Focus TxID: ${buy.signature} | Focus Tx: ${new Date(focusTxTimestamp).toISOString()}`)
     );
-
-    delete buy.surroundingTrades;
 
     const surroundingTrades = await findSurroundingTrades(focusTxTimestamp, buy.signature);
 
