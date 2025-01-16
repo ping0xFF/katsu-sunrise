@@ -1,3 +1,5 @@
+// Katsu Sunrise 2 Script
+
 import "dotenv/config";
 import axios from "axios";
 import fs from "fs";
@@ -30,8 +32,34 @@ async function getTransactions(address, before = null) {
   }
 }
 
+// Validate if a transaction is a valid buy
+function isValidBuy(transaction, wallet, mint) {
+  // console.log(chalk.yellow("Debugging Transaction Structure:"), JSON.stringify(transaction, null, 2)); // Debug transaction structure
+
+  // Extract SOL and token transfers, ensure they are arrays
+  const solTransfers = Array.isArray(transaction.solTransfers) ? transaction.solTransfers : [];
+  const tokenTransfers = Array.isArray(transaction.tokenTransfers) ? transaction.tokenTransfers : [];
+
+  // console.log(chalk.blue("SOL Transfers:"), solTransfers); // Log SOL transfers
+  // console.log(chalk.blue("Token Transfers:"), tokenTransfers); // Log Token transfers
+
+  // Check if SOL is sent from the wallet
+  const solSent = solTransfers.some(
+    (solTx) => solTx.from === wallet && solTx.to && solTx.amount > 0
+  );
+  // console.log(chalk.green(`SOL Sent: ${solSent}`)); // Log SOL sent status
+
+  // Check if the token is received by the wallet
+  const tokenReceived = tokenTransfers.some(
+    (tokenTx) => tokenTx.to === wallet && tokenTx.mint === mint && tokenTx.amount > 0
+  );
+  // console.log(chalk.green(`Token Received: ${tokenReceived}`)); // Log token received status
+
+  return solSent && tokenReceived;
+}
+
 // Find trades before the focus transaction
-async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
+async function findSurroundingTrades(focusTxTimestamp, focusTxSignature, wallet, mint) {
   const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
   let before = focusTxSignature;
   let surroundingTrades = [];
@@ -47,6 +75,8 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
       hasMore = false;
       break;
     }
+
+    console.log(chalk.blue(`Processing ${transactions.length} transactions...`)); // Log number of transactions
 
     for (const tx of transactions) {
       if (seenTransactions.has(tx.signature)) {
@@ -69,11 +99,17 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature) {
         break;
       }
 
+      // Check if the transaction is a valid buy
+      const validBuy = isValidBuy(tx, wallet, mint);
+
       surroundingTrades.push({
         signature: tx.signature,
         timestamp: txTimestampMs, // Explicitly include the timestamp
         details: { ...tx }, // Include full transaction details
+        validBuy, // Indicate if this is a valid buy
       });
+
+      console.log(chalk.green(`Transaction ${tx.signature} is a valid buy: ${validBuy}`)); // Log validity
     }
 
     // Update pagination
@@ -98,12 +134,16 @@ async function processSurroundingTrades() {
   for (let i = 0; i < tokenBuys.length; i++) {
     const buy = tokenBuys[i];
     const focusTxTimestamp = new Date(buy.date).getTime();
+    const wallet = buy.tokenTransfers[0]?.to; // Extract wallet from token transfers
+    const mint = buy.mint;
 
     console.log(
       chalk.blueBright(`Focus TxID: ${buy.signature} | Focus Tx: ${new Date(focusTxTimestamp).toISOString()}`)
     );
 
-    const surroundingTrades = await findSurroundingTrades(focusTxTimestamp, buy.signature);
+    const surroundingTrades = await findSurroundingTrades(focusTxTimestamp, buy.signature, wallet, mint);
+
+    console.log(chalk.yellow(`Surrounding trades for ${buy.signature}:`), JSON.stringify(surroundingTrades, null, 2)); // Log surrounding trades
 
     buy.surroundingTrades = surroundingTrades;
 
