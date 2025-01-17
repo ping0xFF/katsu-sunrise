@@ -8,8 +8,8 @@ import chalk from "chalk";
 // Configuration
 const HELIUS_API_URL = process.env.HELIUS_API_URL;
 const API_KEY = process.env.HELIUS_API_KEY;
-const surroundingTimeRangeMs = 5 * 60 * 1000; // 5 minutes in milliseconds
-const pairAddress = "J2p6tgZDkvtHQ3VfbGRjzHJNLrqFgGfvjJsp2K7HX5cH"; // Token pair address
+const surroundingTimeRangeMs = 1000;
+const pairAddress = "9DHe3pycTuymFk4H4bbPoAJ4hQrr2kaLDF6J6aAKpump"; // Token pair address
 const inputFile = "token_buys.json";
 const outputFile = "token_buys_with_surrounding.json";
 
@@ -34,28 +34,18 @@ async function getTransactions(address, before = null) {
 
 // Validate if a transaction is a valid buy
 function isValidBuy(transaction, wallet, mint) {
-  // console.log(chalk.yellow("Debugging Transaction Structure:"), JSON.stringify(transaction, null, 2)); // Debug transaction structure
-
-  // Extract SOL and token transfers, ensure they are arrays
   const solTransfers = Array.isArray(transaction.solTransfers) ? transaction.solTransfers : [];
   const tokenTransfers = Array.isArray(transaction.tokenTransfers) ? transaction.tokenTransfers : [];
 
-  // console.log(chalk.blue("SOL Transfers:"), solTransfers); // Log SOL transfers
-  // console.log(chalk.blue("Token Transfers:"), tokenTransfers); // Log Token transfers
-
-  // Check if SOL is sent from the wallet
   const solSent = solTransfers.some(
     (solTx) => solTx.from === wallet && solTx.to && solTx.amount > 0
   );
-  // console.log(chalk.green(`SOL Sent: ${solSent}`)); // Log SOL sent status
 
-  // Check if the token is received by the wallet
   const tokenReceived = tokenTransfers.some(
     (tokenTx) => tokenTx.to === wallet && tokenTx.mint === mint && tokenTx.amount > 0
   );
-  // console.log(chalk.green(`Token Received: ${tokenReceived}`)); // Log token received status
 
-  return solSent && tokenReceived;
+  return { valid: solSent && tokenReceived, reason: solSent ? "Missing token transfer" : "Missing SOL transfer" };
 }
 
 // Find trades before the focus transaction
@@ -63,7 +53,7 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature, wallet,
   const startTimestamp = focusTxTimestamp - surroundingTimeRangeMs;
   let before = focusTxSignature;
   let surroundingTrades = [];
-  let seenTransactions = new Set(); // To track unique transactions
+  let seenTransactions = new Set();
   let hasMore = true;
 
   while (hasMore) {
@@ -76,7 +66,7 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature, wallet,
       break;
     }
 
-    console.log(chalk.blue(`Processing ${transactions.length} transactions...`)); // Log number of transactions
+    console.log(chalk.blue(`Processing ${transactions.length} transactions...`));
 
     for (const tx of transactions) {
       if (seenTransactions.has(tx.signature)) {
@@ -89,8 +79,10 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature, wallet,
       const txTimestampMs = tx.timestamp * 1000;
       const isWithinWindow = txTimestampMs >= startTimestamp;
 
+      const { valid, reason } = isValidBuy(tx, wallet, mint);
+
       console.log(
-        `${isWithinWindow ? chalk.green("✅") : chalk.red("❌")} TxID: ${chalk.yellow(tx.signature)} | TS: ${new Date(txTimestampMs).toISOString()}`
+        `${isWithinWindow ? chalk.cyan("⏳") : chalk.red("⏰")} TxID: ${chalk.yellow(tx.signature)} | TS: ${chalk.blue(new Date(txTimestampMs).toISOString())} | Buy: ${valid ? chalk.green("✅") : chalk.red("🚫")} ${valid ? "" : `| Reason: ${chalk.red(reason)}`}`
       );
 
       if (!isWithinWindow) {
@@ -99,24 +91,17 @@ async function findSurroundingTrades(focusTxTimestamp, focusTxSignature, wallet,
         break;
       }
 
-      // Check if the transaction is a valid buy
-      const validBuy = isValidBuy(tx, wallet, mint);
-
       surroundingTrades.push({
         signature: tx.signature,
-        timestamp: txTimestampMs, // Explicitly include the timestamp
-        details: { ...tx }, // Include full transaction details
-        validBuy, // Indicate if this is a valid buy
+        timestamp: txTimestampMs,
+        details: { ...tx },
+        validBuy: valid,
       });
-
-      console.log(chalk.green(`Transaction ${tx.signature} is a valid buy: ${validBuy}`)); // Log validity
     }
 
-    // Update pagination
     const previousBefore = before;
     before = transactions[transactions.length - 1]?.signature;
 
-    // Prevent infinite loops by ensuring the `before` value changes
     if (!before || before === previousBefore) {
       console.log(chalk.red("No valid 'before' parameter or duplicate batch detected. Ending pagination."));
       hasMore = false;
@@ -134,20 +119,42 @@ async function processSurroundingTrades() {
   for (let i = 0; i < tokenBuys.length; i++) {
     const buy = tokenBuys[i];
     const focusTxTimestamp = new Date(buy.date).getTime();
-    const wallet = buy.tokenTransfers[0]?.to; // Extract wallet from token transfers
+    const wallet = buy.tokenTransfers[0]?.to;
     const mint = buy.mint;
 
-    console.log(
-      chalk.blueBright(`Focus TxID: ${buy.signature} | Focus Tx: ${new Date(focusTxTimestamp).toISOString()}`)
-    );
+    console.log(chalk.blueBright(`Processing Focus TxID: ${buy.signature}`));
+    console.log(chalk.greenBright(`Focus Timestamp: ${new Date(focusTxTimestamp).toISOString()}`));
+    console.log(chalk.cyan(`Fetching surrounding trades...\n`));
 
     const surroundingTrades = await findSurroundingTrades(focusTxTimestamp, buy.signature, wallet, mint);
 
-    console.log(chalk.yellow(`Surrounding trades for ${buy.signature}:`), JSON.stringify(surroundingTrades, null, 2)); // Log surrounding trades
+    surroundingTrades.forEach((tx) => {
+      const txTimestampMs = tx.timestamp;
+      const isWithinWindow = txTimestampMs >= focusTxTimestamp - surroundingTimeRangeMs;
+
+      const solSentDetails = tx.details.solTransfers?.find(solTx => solTx.from === wallet);
+      const tokenReceivedDetails = tx.details.tokenTransfers?.find(tokenTx => tokenTx.to === wallet && tokenTx.mint === mint);
+
+      const txDetails = `${isWithinWindow ? chalk.cyan('⏳') : chalk.red('⏰')} TxID: ${chalk.yellow(tx.signature)} | TS: ${chalk.blue(new Date(txTimestampMs).toISOString())}`;
+
+      if (isWithinWindow) {
+        if (tx.validBuy) {
+          console.log(chalk.green(`${txDetails} | ${chalk.green('Buy: ✅')} | ${chalk.magenta('SOL Sent:')} ${chalk.greenBright(solSentDetails?.amount || 'N/A')} | ${chalk.magenta('Tokens Received:')} ${chalk.greenBright(tokenReceivedDetails?.amount || 'N/A')} [${chalk.yellow('MINT:')} ${chalk.yellow(tokenReceivedDetails?.mint || 'N/A')}]`));
+        } else {
+          console.log(chalk.red(`${txDetails} | ${chalk.yellow('Buy: 🚫')} | ${chalk.redBright('Reason: Missing')} ${chalk.magenta(solSentDetails ? 'token transfer' : 'SOL transfer')}.`));
+        }
+      } else {
+        console.log(chalk.red(`${txDetails} | ${chalk.redBright('Outside time window. Stopping pagination.')}`));
+      }
+    });
+
+    console.log(chalk.blueBright(`Summary for Focus TxID: ${buy.signature}:`));
+    console.log(chalk.greenBright(`- Total surrounding trades found: ${surroundingTrades.length}`));
+    console.log(chalk.green(`- Valid buys: ${surroundingTrades.filter(tx => tx.validBuy).length} ✅`));
+    console.log(chalk.yellow(`- Invalid buys: ${surroundingTrades.filter(tx => !tx.validBuy).length} 🚫`));
+    console.log(chalk.blueBright(`\n`));
 
     buy.surroundingTrades = surroundingTrades;
-
-    console.log(chalk.green(`Found ${surroundingTrades.length} trades for focus TxID: ${buy.signature}\n`));
   }
 
   fs.writeFileSync(outputFile, JSON.stringify(tokenBuys, null, 2));
